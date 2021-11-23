@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package vins.proto;
+
+message Extrinsic {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+
+  float qw = 4;
+  float qx = 5;
+  float qy = 6;
+  float qz = 7;
+}
+
+message VinsConfig {
+  // for camera intrinsic
+  int32 image_width = 1;
+  int32 image_height = 2;
+
+  float fx = 3;
+  float fy = 4;
+  float cx = 5;
+  float cy = 6;
+
+  // for camera extrinsic : camera to imu
+  Extrinsic camera_to_imu = 7;
+
+  // imu intrinisic
+  float acc_noise = 8;
+  float acc_random_walk = 9;
+  float gyr_noise = 10;
+  float gyr_random_walk = 11;
+}

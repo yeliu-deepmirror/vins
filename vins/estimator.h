@@ -26,7 +26,7 @@ namespace vins {
 class Estimator {
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
-  Estimator();
+  explicit Estimator(bool verbose);
 
   void SetParameter(const Sophus::SO3d& ric, const Eigen::Vector3d& tic);
 
@@ -34,7 +34,7 @@ class Estimator {
   void processIMU(double t, const Vector3d& linear_acceleration, const Vector3d& angular_velocity);
 
   // original VINS interface for image (which support stereo camera)
-  void ProcessImage(const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& image,
+  void ProcessImage(const map<int, vector<pair<int, Eigen::Matrix<double, 3, 1>>>>& image,
                     double header);
 
   void setReloFrame(double _frame_stamp, int _frame_index, vector<Vector3d>& _match_points,
@@ -63,6 +63,8 @@ class Estimator {
   enum SolverFlag { INITIAL, NON_LINEAR };
 
   enum MarginalizationFlag { MARGIN_OLD = 0, MARGIN_SECOND_NEW = 1 };
+
+  bool verbose_;
 
   //////////////// OUR SOLVER ///////////////////
   MatXX Hprior_;
@@ -135,7 +137,7 @@ class Estimator {
   // MarginalizationInfo *last_marginalization_info;
   vector<double*> last_marginalization_parameter_blocks;
 
-  map<double, backend::ImageFrame> all_image_frame;
+  std::map<double, backend::ImageFrame> all_image_frame;
   backend::IntegrationBase* tmp_pre_integration;
 
   // relocalization variable

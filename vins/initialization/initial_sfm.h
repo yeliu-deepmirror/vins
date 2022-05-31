@@ -4,7 +4,7 @@
 #include <ceres/rotation.h>
 #include <cstdlib>
 #include <deque>
-#include <eigen3/Eigen/Dense>
+#include <Eigen/Dense>
 #include <iostream>
 #include <map>
 #include <opencv2/core/eigen.hpp>

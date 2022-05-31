@@ -6,7 +6,7 @@
 
 namespace vins {
 
-Estimator::Estimator() : f_manager{Rs} {
+Estimator::Estimator(bool verbose) : verbose_(verbose), f_manager{Rs} {
   std::cout << "[ESTIMATOR] initialize. " << std::endl;
   ClearState(true);
 }
@@ -109,7 +109,7 @@ void Estimator::processIMU(double dt, const Vector3d& linear_acceleration,
   gyr_0 = angular_velocity;
 }
 
-void Estimator::ProcessImage(const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& image,
+void Estimator::ProcessImage(const map<int, vector<pair<int, Eigen::Matrix<double, 3, 1>>>>& image,
                              double header) {
   if (f_manager.AddFeatureCheckParallax(frame_count, image, td))
     marginalization_flag = MARGIN_OLD;
@@ -120,7 +120,7 @@ void Estimator::ProcessImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
 
   backend::ImageFrame imageframe(image, header);
   imageframe.pre_integration = tmp_pre_integration;
-  all_image_frame.insert(make_pair(header, imageframe));
+  all_image_frame.insert(std::make_pair(header, imageframe));
 
   tmp_pre_integration =
       new backend::IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count]};
@@ -210,8 +210,8 @@ bool Estimator::InitialStructure() {
   // global sfm
   Quaterniond Q[frame_count + 1];
   Vector3d T[frame_count + 1];
-  map<int, Vector3d> sfm_tracked_points;
-  vector<SFMFeature> sfm_f;
+  std::map<int, Eigen::Vector3d> sfm_tracked_points;
+  std::vector<SFMFeature> sfm_f;
   for (auto& it_per_id : f_manager.feature) {
     int imu_j = it_per_id.start_frame - 1;
     SFMFeature tmp_feature;
@@ -239,9 +239,7 @@ bool Estimator::InitialStructure() {
   }
 
   // solve pnp for all frame
-  map<double, backend::ImageFrame>::iterator frame_it;
-  map<int, Vector3d>::iterator it;
-  frame_it = all_image_frame.begin();
+  std::map<double, backend::ImageFrame>::iterator frame_it = all_image_frame.begin();
   for (int i = 0; frame_it != all_image_frame.end(); frame_it++) {
     // provide initial guess
     cv::Mat r, rvec, t, D, tmp_r;
@@ -265,26 +263,22 @@ bool Estimator::InitialStructure() {
     vector<cv::Point3f> pts_3_vector;
     vector<cv::Point2f> pts_2_vector;
     for (auto& id_pts : frame_it->second.points) {
-      int feature_id = id_pts.first;
       for (auto& i_p : id_pts.second) {
-        it = sfm_tracked_points.find(feature_id);
-        if (it != sfm_tracked_points.end()) {
-          Vector3d world_pts = it->second;
-          cv::Point3f pts_3(world_pts(0), world_pts(1), world_pts(2));
-          pts_3_vector.push_back(pts_3);
-          Vector2d img_pts = i_p.second.head<2>();
-          cv::Point2f pts_2(img_pts(0), img_pts(1));
-          pts_2_vector.push_back(pts_2);
-        }
+        auto it = sfm_tracked_points.find(id_pts.first);
+        if (it == sfm_tracked_points.end()) continue;
+        const auto& world_pts = it->second;
+        pts_3_vector.emplace_back(cv::Point3f(world_pts(0), world_pts(1), world_pts(2)));
+        const auto& img_pts = i_p.second.head<2>();
+        pts_2_vector.emplace_back(cv::Point2f(img_pts(0), img_pts(1)));
       }
     }
     cv::Mat K = (cv::Mat_<double>(3, 3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);
     if (pts_3_vector.size() < 6) {
-      cout << "Not enough points for solve pnp pts_3_vector size " << pts_3_vector.size() << endl;
+      LOG(WARNING) << "Not enough points for solve pnp pts_3_vector size " << pts_3_vector.size();
       return false;
     }
     if (!cv::solvePnP(pts_3_vector, pts_2_vector, K, D, rvec, t, 1)) {
-      cout << " solve pnp fail!" << endl;
+      LOG(WARNING) << " solve pnp fail!";
       return false;
     }
     cv::Rodrigues(rvec, r);
@@ -441,8 +435,6 @@ void Estimator::MargOldFrame() {
   shared_ptr<backend::VertexPose> vertexExt(new backend::VertexPose());
   {
     Eigen::VectorXd pose = vPic[0];
-    // pose << para_Ex_Pose[0][0], para_Ex_Pose[0][1], para_Ex_Pose[0][2], para_Ex_Pose[0][3],
-    // para_Ex_Pose[0][4], para_Ex_Pose[0][5], para_Ex_Pose[0][6];
     vertexExt->SetParameters(pose);
     problem.AddVertex(vertexExt);
     pose_dim += vertexExt->LocalDimension();
@@ -496,7 +488,7 @@ void Estimator::MargOldFrame() {
       int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
       if (imu_i != 0) continue;
 
-      Vector3d pts_i = it_per_id.feature_per_frame[0].point;
+      const Vector3d& pts_i = it_per_id.feature_per_frame[0].point;
 
       shared_ptr<backend::VertexInverseDepth> verterxPoint(new backend::VertexInverseDepth());
       VecX inv_d(1);
@@ -509,7 +501,7 @@ void Estimator::MargOldFrame() {
         imu_j++;
         if (imu_i == imu_j) continue;
 
-        Vector3d pts_j = it_per_frame.point;
+        const Vector3d& pts_j = it_per_frame.point;
 
         std::vector<std::shared_ptr<backend::Vertex>> edge_vertex;
         edge_vertex.push_back(verterxPoint);
@@ -752,7 +744,7 @@ void Estimator::ProblemSolve() {
     }
   }
 
-  problem.Solve(NUM_ITERATIONS);
+  problem.Solve(NUM_ITERATIONS, verbose_);
 
   // update bprior_,  Hprior_ do not need update
   if (Hprior_.rows() > 0) {
@@ -868,8 +860,7 @@ void Estimator::slideWindow() {
       angular_velocity_buf[feature::WINDOW_SIZE].clear();
 
       if (true || solver_flag == INITIAL) {
-        map<double, backend::ImageFrame>::iterator it_0;
-        it_0 = all_image_frame.find(t_0);
+        std::map<double, backend::ImageFrame>::iterator it_0 = all_image_frame.find(t_0);
         delete it_0->second.pre_integration;
         it_0->second.pre_integration = nullptr;
 
@@ -928,9 +919,7 @@ void Estimator::slideWindowNew() {
 // real marginalization is removed in solve_ceres()
 void Estimator::slideWindowOld() {
   sum_of_back++;
-
-  bool shift_depth = solver_flag == NON_LINEAR ? true : false;
-  if (shift_depth) {
+  if (solver_flag == NON_LINEAR) {
     Matrix3d R0, R1;
     Vector3d P0, P1;
     R0 = back_R0 * rigid_ic_.so3().matrix();
@@ -938,8 +927,9 @@ void Estimator::slideWindowOld() {
     P0 = back_P0 + back_R0 * rigid_ic_.translation();
     P1 = Ps[0] + Rs[0] * rigid_ic_.translation();
     f_manager.RemoveBackShiftDepth(R0, P0, R1, P1);
-  } else
+  } else {
     f_manager.RemoveBack();
+  }
 }
 
 void Estimator::SaveMarginalizedFrameHostedPoints(backend::Problem& problem) {

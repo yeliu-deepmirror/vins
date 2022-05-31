@@ -7,7 +7,7 @@ namespace feature {
 namespace {
 
 cv::Point2f UndistortPointFast(const cv::Point2f& point_xy, const Eigen::VectorXd& undist_param) {
-  if (undist_param.norm() == 0) {
+  if (undist_param.squaredNorm() == 0) {
     return point_xy;
   }
   // https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp
@@ -63,11 +63,12 @@ template <typename T>
 std::vector<size_t> ArgSortVector(const std::vector<T>& v) {
   std::vector<size_t> idx(v.size());
   std::iota(idx.begin(), idx.end(), 0);
-  std::sort(idx.begin(), idx.end(), [&v](size_t i1, size_t i2) { return v[i1] < v[i2]; });
+  std::sort(idx.begin(), idx.end(), [&v](size_t i1, size_t i2) { return v[i1] > v[i2]; });
   return idx;
 }
 
-FeatureTracker::FeatureTracker() {}
+FeatureTracker::FeatureTracker(bool equalize, int max_num_pts, int min_pt_distance)
+    : equalize_(equalize), max_num_pts_(max_num_pts), min_pt_distance_(min_pt_distance) {}
 
 void FeatureTracker::GetMaskAndFilterPoints(cv::Mat& mMask) {
   mMask = cv::Mat(intrinsic_.row_, intrinsic_.col_, CV_8UC1, cv::Scalar(255));
@@ -106,7 +107,7 @@ void FeatureTracker::ReadImage(const cv::Mat& _img, double _cur_time, bool bPubl
   cur_time = _cur_time;
 
   if (equalize_) {
-    cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(3.0, cv::Size(8, 8));
+    static cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(3.0, cv::Size(4, 4));
     clahe->apply(_img, img);
   } else {
     img = _img;

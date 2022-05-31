@@ -360,16 +360,10 @@ bool Problem::SolveLinearSystem() {
     VecX delta_x_ll(marg_size);
     delta_x_ll = Hmm_inv * (bmm - Hmp * delta_x_pp);
     delta_x_.tail(marg_size) = delta_x_ll;
-
-    //        std::cout << "schur time cost: "<< t_Hmminv.toc()<<std::endl;
   }
   dCurrenNormDx_ = delta_x_.norm();
-
-  if (dCurrenNormDx_ > 1e3) {
-    // solve failed, as the delta x is much too large
-    return false;
-  }
-  return true;
+  // solve failed, as the delta x is much too large
+  return dCurrenNormDx_ < 1e3;
 }
 
 void Problem::UpdateStates() {

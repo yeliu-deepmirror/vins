@@ -49,7 +49,7 @@ void PubImuData() {
     ssImuData >> dStampNSec >> vGyr.x() >> vGyr.y() >> vGyr.z() >> vAcc.x() >> vAcc.y() >> vAcc.z();
     // cout << "Imu t: " << fixed << dStampNSec << " gyr: " << vGyr.transpose() << " acc: " <<
     // vAcc.transpose() << endl;
-    pSystem->PubImuData(dStampNSec / 1e9, vGyr, vAcc);
+    pSystem->PubImuData(dStampNSec / 1e9, vAcc, vGyr);
     usleep(2000 * nDelayTimes);
   }
   fs_imu.close();

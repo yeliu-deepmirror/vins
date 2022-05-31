@@ -35,23 +35,3 @@ cc_library(
         "@pangolin",
     ],
 )
-
-cc_binary(
-    name = "run_deepmirror",
-    srcs = ["run_deepmirror.cc"],
-    deps = [
-        ":system",
-    ],
-)
-
-cc_binary(
-    name = "run_record",
-    srcs = ["run_record.cc"],
-    deps = [
-        ":system",
-        "//modules/map/data_processor:dso_processor",
-        "//modules/common/record:record_reader",
-        "@dm_core_cpp//common/base:glog",
-        "@dm_core_map//map/session:sensor_utils",
-    ],
-)

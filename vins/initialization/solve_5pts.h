@@ -3,7 +3,7 @@
 #include <vector>
 using namespace std;
 
-#include <eigen3/Eigen/Dense>
+#include <Eigen/Dense>
 #include <opencv2/opencv.hpp>
 using namespace Eigen;
 

@@ -22,13 +22,23 @@ message VinsConfig {
   float fy = 4;
   float cx = 5;
   float cy = 6;
+  float k1 = 7;
+  float k2 = 8;
+  float p1 = 9;
+  float p2 = 10;
+  float k3 = 11;
 
   // for camera extrinsic : camera to imu
-  Extrinsic camera_to_imu = 7;
+  Extrinsic camera_to_imu = 12;
 
   // imu intrinisic
-  float acc_noise = 8;
-  float acc_random_walk = 9;
-  float gyr_noise = 10;
-  float gyr_random_walk = 11;
+  float acc_noise = 13;
+  float acc_random_walk = 14;
+  float gyr_noise = 15;
+  float gyr_random_walk = 16;
+
+  bool verbose = 17;
+  bool equalize = 18;
+  int32 max_num_pts = 19;
+  int32 min_pt_distance = 20;
 }

@@ -11,10 +11,12 @@ using namespace pangolin;
 namespace vins {
 
 System::System(const vins::proto::VinsConfig& vins_config) {
+  Eigen::Matrix<double, 6, 1> dist_coeff;
+  dist_coeff << vins_config.k1(), vins_config.k2(), vins_config.p1(), vins_config.p2(), vins_config.k3(), 0.0;
   // read config from proto
   trackerData[0].SetIntrinsicParameter(feature::CameraIntrinsic{
     vins_config.image_width(), vins_config.image_height(), vins_config.fx(),
-    vins_config.fy(), vins_config.cx(), vins_config.cy(), Eigen::Matrix<double, 6, 1>::Zero()});
+    vins_config.fy(), vins_config.cx(), vins_config.cy(), dist_coeff});
 
   Eigen::Quaterniond qic(vins_config.camera_to_imu().qw(), vins_config.camera_to_imu().qx(),
                          vins_config.camera_to_imu().qy(), vins_config.camera_to_imu().qz());

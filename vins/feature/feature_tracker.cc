@@ -7,7 +7,7 @@ namespace feature {
 namespace {
 
 cv::Point2f UndistortPointFast(const cv::Point2f& point_xy, const Eigen::VectorXd& undist_param) {
-  if (undist_param.norm() == 0) {
+  if (undist_param.squaredNorm() == 0) {
     return point_xy;
   }
   // https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp

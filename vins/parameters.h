@@ -1,6 +1,6 @@
 #pragma once
 
-#include <igen/Dense>
+#include <Eigen/Dense>
 #include <fstream>
 #include <vector>
 

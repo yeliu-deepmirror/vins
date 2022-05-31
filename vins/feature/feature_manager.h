@@ -8,7 +8,7 @@
 
 using namespace std;
 
-#include <eigen3/Eigen/Dense>
+#include <Eigen/Dense>
 
 namespace vins {
 namespace feature {

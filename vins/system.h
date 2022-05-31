@@ -20,7 +20,7 @@ class System {
 
   // push in real image and IMU data
   // depth should be float scalar
-  bool PublishImageData(double dStampSec, cv::Mat& img, cv::Mat& depth = cv::Mat());
+  bool PublishImageData(double dStampSec, cv::Mat& img, cv::Mat& depth);
   bool PublishImuData(double stamp_second, const Eigen::Vector3d& acc, const Eigen::Vector3d& gyr);
 
  private:

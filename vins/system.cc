@@ -47,7 +47,7 @@ bool System::PubImageData(double stamp_second, cv::Mat& img) {
   feature_tracker_.ReadImage(img, stamp_second, true);
   feature_tracker_.UpdateIdMono();
 
-  std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 7, 1>>>> image;
+  std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>> image;
   auto& un_pts = feature_tracker_.vCurUndistortPts;
   // auto& vCurPts = feature_tracker_.vCurPts;
   auto& vFeatureIds = feature_tracker_.vFeatureIds;

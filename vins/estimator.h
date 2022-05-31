@@ -34,7 +34,7 @@ class Estimator {
   void processIMU(double t, const Vector3d& linear_acceleration, const Vector3d& angular_velocity);
 
   // original VINS interface for image (which support stereo camera)
-  void ProcessImage(const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& image,
+  void ProcessImage(const map<int, vector<pair<int, Eigen::Matrix<double, 3, 1>>>>& image,
                     double header);
 
   void setReloFrame(double _frame_stamp, int _frame_index, vector<Vector3d>& _match_points,

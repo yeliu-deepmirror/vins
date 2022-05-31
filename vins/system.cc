@@ -40,7 +40,7 @@ bool System::PubImageData(double stamp_second, cv::Mat& img) {
   }
   PubImuData(stamp_second, latest_acc_, latest_gyr_);
 
-  trackerData[0].ReadImage(img, dStampSec, true);
+  trackerData[0].ReadImage(img, stamp_second, true);
   trackerData[0].UpdateIdMono();
 
   std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 7, 1>>>> image;
@@ -55,13 +55,13 @@ bool System::PubImageData(double stamp_second, cv::Mat& img) {
       double x = un_pts[j].x;
       double y = un_pts[j].y;
       Eigen::Matrix<double, 7, 1> xyz_uv_velocity;
-      xyz_uv_velocity << x, y, z, vCurPts[j].x, vCurPts[j].y, vFeatureVelocity[j].x,
+      xyz_uv_velocity << x, y, 1.0, vCurPts[j].x, vCurPts[j].y, vFeatureVelocity[j].x,
           vFeatureVelocity[j].y;
       image[vFeatureIds[j]].emplace_back(i, xyz_uv_velocity);
     }
   }
 
-  estimator_.ProcessImage(image, dStampSec);
+  estimator_.ProcessImage(image, stamp_second);
 
   if (SHOW_TRACK) {
     if (estimator_.solver_flag == Estimator::SolverFlag::NON_LINEAR) {

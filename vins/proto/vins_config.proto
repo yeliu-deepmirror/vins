@@ -28,7 +28,6 @@ message VinsConfig {
   float p2 = 10;
   float k3 = 11;
 
-
   // for camera extrinsic : camera to imu
   Extrinsic camera_to_imu = 12;
 

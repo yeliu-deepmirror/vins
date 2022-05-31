@@ -65,7 +65,7 @@ bool System::PublishImageData(double stamp_second, cv::Mat& img, cv::Mat& depth)
 
   estimator_.ProcessImage(image, stamp_second);
 
-  if (SHOW_TRACK) {
+  if (vins_config_.viz()) {
     if (estimator_.solver_flag == Estimator::SolverFlag::NON_LINEAR) {
       Eigen::Vector3d p_wi;
       Eigen::Quaterniond q_wi;
@@ -76,18 +76,26 @@ bool System::PublishImageData(double stamp_second, cv::Mat& img, cv::Mat& depth)
       keyframe_history.push_back(estimator_.GetCurrentCameraPose());
     }
 
-    cv::Mat show_img;
-    cv::cvtColor(img, show_img, cv::COLOR_GRAY2BGR);
-
-    for (unsigned int j = 0; j < feature_tracker_.vCurPts.size(); j++) {
-      double len = min(1.0, 1.0 * feature_tracker_.vTrackCnt[j] / WINDOW_SIZE);
-      cv::circle(show_img, feature_tracker_.vCurPts[j], 2,
-                 cv::Scalar(255 * (1 - len), 0, 255 * len), 2);
-    }
+    cv::Mat show_img = img;
+    ShowTrack(&show_img);
     cv::imshow("IMAGE", show_img);
     cv::waitKey(1);
   }
   return true;
+}
+
+void System::ShowTrack(cv::Mat* image) {
+  CHECK(image != nullptr);
+
+  if (image->channels() == 1) {
+    cv::cvtColor(*image, *image, cv::COLOR_GRAY2BGR);
+  }
+
+  for (unsigned int j = 0; j < feature_tracker_.vCurPts.size(); j++) {
+    double len = min(1.0, 1.0 * feature_tracker_.vTrackCnt[j] / WINDOW_SIZE);
+    cv::circle(*image, feature_tracker_.vCurPts[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len),
+               2);
+  }
 }
 
 bool System::PublishImuData(double stamp_second, const Eigen::Vector3d& acc,

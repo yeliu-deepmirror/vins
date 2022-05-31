@@ -6,7 +6,7 @@
 
 namespace vins {
 
-Estimator::Estimator(bool verbose) : verbose_(verbose) f_manager{Rs} {
+Estimator::Estimator(bool verbose) : verbose_(verbose), f_manager{Rs} {
   std::cout << "[ESTIMATOR] initialize. " << std::endl;
   ClearState(true);
 }

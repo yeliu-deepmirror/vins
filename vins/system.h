@@ -23,7 +23,7 @@ class System {
   bool PublishImageData(double dStampSec, cv::Mat& img, cv::Mat& depth);
   bool PublishImuData(double stamp_second, const Eigen::Vector3d& acc, const Eigen::Vector3d& gyr);
 
- private:
+ // private:
   const vins::proto::VinsConfig vins_config_;
 
   feature::FeatureTracker feature_tracker_;

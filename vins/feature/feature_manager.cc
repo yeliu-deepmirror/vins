@@ -24,6 +24,7 @@ bool FeatureManager::AddFeatureCheckParallax(
     double) {
   last_track_num = 0;
   for (auto& id_pts : image) {
+    const Eigen::Vector3d& pt_cam = id_pts.second[0].second;
     int feature_id = id_pts.first;
     std::list<FeaturePerId>::iterator it =
         find_if(feature.begin(), feature.end(),
@@ -39,7 +40,6 @@ bool FeatureManager::AddFeatureCheckParallax(
     } else {
       last_track_num++;
     }
-    const Eigen::Vector3d& pt_cam = id_pts.second[0].second;
     it->feature_per_frame.emplace_back(FeaturePerFrame(pt_cam));
   }
 

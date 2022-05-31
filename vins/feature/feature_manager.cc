@@ -20,22 +20,18 @@ int FeatureManager::GetFeatureCount() {
 }
 
 bool FeatureManager::AddFeatureCheckParallax(
-    int frame_count,
-    const std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>>& image,
-    double td) {
+    int frame_count, const std::map<int, std::vector<std::pair<int, Eigen::Vector3d>>>& image,
+    double) {
   last_track_num = 0;
   for (auto& id_pts : image) {
-    FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
-
     int feature_id = id_pts.first;
     auto it = find_if(feature.begin(), feature.end(),
                       [feature_id](const FeaturePerId& it) { return it.feature_id == feature_id; });
-
     if (it == feature.end()) {
       feature.push_back(FeaturePerId(feature_id, frame_count));
-      feature.back().feature_per_frame.push_back(f_per_fra);
+      feature.back().feature_per_frame.emplace_back(FeaturePerFrame(id_pts.second[0].second));
     } else {
-      it->feature_per_frame.push_back(f_per_fra);
+      it->feature_per_frame.emplace_back(FeaturePerFrame(id_pts.second[0].second));
       last_track_num++;
     }
   }
@@ -61,14 +57,10 @@ std::vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> FeatureManager::GetCorr
   std::vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> corres;
   for (auto& it : feature) {
     if (it.start_frame <= frame_count_l && it.endFrame() >= frame_count_r) {
-      Eigen::Vector3d a = Eigen::Vector3d::Zero(), b = Eigen::Vector3d::Zero();
       int idx_l = frame_count_l - it.start_frame;
       int idx_r = frame_count_r - it.start_frame;
-
-      a = it.feature_per_frame[idx_l].point;
-      b = it.feature_per_frame[idx_r].point;
-
-      corres.push_back(make_pair(a, b));
+      corres.push_back(
+          std::make_pair(it.feature_per_frame[idx_l].point, it.feature_per_frame[idx_r].point));
     }
   }
   return corres;
@@ -153,9 +145,7 @@ void FeatureManager::triangulate(Eigen::Vector3d Ps[], Eigen::Vector3d tic,
     assert(svd_idx == svd_A.rows());
     Eigen::Vector4d svd_V =
         Eigen::JacobiSVD<Eigen::MatrixXd>(svd_A, Eigen::ComputeThinV).matrixV().rightCols<1>();
-    double svd_method = svd_V[2] / svd_V[3];
-
-    it_per_id.estimated_depth = svd_method;
+    it_per_id.estimated_depth = svd_V[2] / svd_V[3];
     if (it_per_id.estimated_depth < 0.1) {
       it_per_id.estimated_depth = INIT_DEPTH;
     }
@@ -178,25 +168,21 @@ void FeatureManager::RemoveBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
                                           Eigen::Matrix3d new_R, Eigen::Vector3d new_P) {
   for (auto it = feature.begin(), it_next = feature.begin(); it != feature.end(); it = it_next) {
     it_next++;
-
-    if (it->start_frame != 0)
+    if (it->start_frame != 0) {
       it->start_frame--;
-    else {
-      Eigen::Vector3d uv_i = it->feature_per_frame[0].point;
-      it->feature_per_frame.erase(it->feature_per_frame.begin());
-      if (it->feature_per_frame.size() < 2) {
-        feature.erase(it);
-        continue;
-      } else {
-        Eigen::Vector3d pts_i = uv_i * it->estimated_depth;
-        Eigen::Vector3d w_pts_i = marg_R * pts_i + marg_P;
-        Eigen::Vector3d pts_j = new_R.transpose() * (w_pts_i - new_P);
-        double dep_j = pts_j(2);
-        if (dep_j > 0)
-          it->estimated_depth = dep_j;
-        else
-          it->estimated_depth = INIT_DEPTH;
-      }
+      continue;
+    }
+
+    const Eigen::Vector3d& uv_i = it->feature_per_frame[0].point;
+    it->feature_per_frame.erase(it->feature_per_frame.begin());
+    if (it->feature_per_frame.size() < 2) {
+      feature.erase(it);
+      continue;
+    } else {
+      Eigen::Vector3d pts_i = uv_i * it->estimated_depth;
+      Eigen::Vector3d w_pts_i = marg_R * pts_i + marg_P;
+      Eigen::Vector3d pts_j = new_R.transpose() * (w_pts_i - new_P);
+      it->estimated_depth = pts_j(2) > 0.1 ? pts_j(2) : INIT_DEPTH;
     }
   }
 }

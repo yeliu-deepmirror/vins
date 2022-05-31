@@ -435,8 +435,6 @@ void Estimator::MargOldFrame() {
   shared_ptr<backend::VertexPose> vertexExt(new backend::VertexPose());
   {
     Eigen::VectorXd pose = vPic[0];
-    // pose << para_Ex_Pose[0][0], para_Ex_Pose[0][1], para_Ex_Pose[0][2], para_Ex_Pose[0][3],
-    // para_Ex_Pose[0][4], para_Ex_Pose[0][5], para_Ex_Pose[0][6];
     vertexExt->SetParameters(pose);
     problem.AddVertex(vertexExt);
     pose_dim += vertexExt->LocalDimension();
@@ -490,7 +488,7 @@ void Estimator::MargOldFrame() {
       int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
       if (imu_i != 0) continue;
 
-      Vector3d pts_i = it_per_id.feature_per_frame[0].point;
+      const Vector3d& pts_i = it_per_id.feature_per_frame[0].point;
 
       shared_ptr<backend::VertexInverseDepth> verterxPoint(new backend::VertexInverseDepth());
       VecX inv_d(1);
@@ -503,7 +501,7 @@ void Estimator::MargOldFrame() {
         imu_j++;
         if (imu_i == imu_j) continue;
 
-        Vector3d pts_j = it_per_frame.point;
+        const Vector3d& pts_j = it_per_frame.point;
 
         std::vector<std::shared_ptr<backend::Vertex>> edge_vertex;
         edge_vertex.push_back(verterxPoint);
@@ -921,9 +919,7 @@ void Estimator::slideWindowNew() {
 // real marginalization is removed in solve_ceres()
 void Estimator::slideWindowOld() {
   sum_of_back++;
-
-  bool shift_depth = solver_flag == NON_LINEAR ? true : false;
-  if (shift_depth) {
+  if (solver_flag == NON_LINEAR) {
     Matrix3d R0, R1;
     Vector3d P0, P1;
     R0 = back_R0 * rigid_ic_.so3().matrix();
@@ -931,8 +927,9 @@ void Estimator::slideWindowOld() {
     P0 = back_P0 + back_R0 * rigid_ic_.translation();
     P1 = Ps[0] + Rs[0] * rigid_ic_.translation();
     f_manager.RemoveBackShiftDepth(R0, P0, R1, P1);
-  } else
+  } else {
     f_manager.RemoveBack();
+  }
 }
 
 void Estimator::SaveMarginalizedFrameHostedPoints(backend::Problem& problem) {

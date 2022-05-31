@@ -49,17 +49,9 @@ bool System::PubImageData(double stamp_second, cv::Mat& img) {
 
   std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>> image;
   auto& un_pts = feature_tracker_.vCurUndistortPts;
-  // auto& vCurPts = feature_tracker_.vCurPts;
   auto& vFeatureIds = feature_tracker_.vFeatureIds;
-  // auto& vFeatureVelocity = feature_tracker_.vFeatureVelocity;
   for (size_t j = 0; j < vFeatureIds.size(); j++) {
     if (feature_tracker_.vTrackCnt[j] < 2) continue;
-    // int p_id = vFeatureIds[j];
-    // double x = un_pts[j].x;
-    // double y = un_pts[j].y;
-    // Eigen::Matrix<double, 7, 1> xyz_uv_velocity;
-    // xyz_uv_velocity << x, y, 1.0, vCurPts[j].x, vCurPts[j].y, vFeatureVelocity[j].x,
-    //     vFeatureVelocity[j].y;
     image[vFeatureIds[j]].emplace_back(0, Eigen::Vector3d(un_pts[j].x, un_pts[j].y, 1.0));
   }
 

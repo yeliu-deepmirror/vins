@@ -18,20 +18,9 @@ const int WINDOW_SIZE = 10;
 const double MIN_PARALLAX = 0.04;
 const double INIT_DEPTH = 2.0;
 
-class FeaturePerFrame {
- public:
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
-
-  FeaturePerFrame(const Eigen::Matrix<double, 3, 1>& _point, double td)
-      : cur_td(td), point(_point) {
-  }
-  double cur_td;
+struct FeaturePerFrame {
+  explicit FeaturePerFrame(const Eigen::Matrix<double, 3, 1>& _point) : point(_point) {}
   Eigen::Vector3d point;
-  bool is_used = false;
-  double parallax = 0.0;
-  Eigen::MatrixXd A;
-  Eigen::VectorXd b;
-  double dep_gradient = 0.0;
 };
 
 class FeaturePerId {
@@ -47,8 +36,6 @@ class FeaturePerId {
   bool is_margin;
   double estimated_depth;
   int solve_flag;  // 0 haven't solve yet; 1 solve succ; 2 solve fail;
-
-  Eigen::Vector3d gt_p;
 
   FeaturePerId(int _feature_id, int _start_frame)
       : feature_id(_feature_id),
@@ -87,7 +74,7 @@ class FeatureManager {
   void removeFront(int frame_count);
   void removeOutlier();
 
-  list<FeaturePerId> feature;
+  std::list<FeaturePerId> feature;
   int last_track_num;
 
  private:

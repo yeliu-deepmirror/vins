@@ -137,7 +137,7 @@ class Estimator {
   // MarginalizationInfo *last_marginalization_info;
   vector<double*> last_marginalization_parameter_blocks;
 
-  map<double, backend::ImageFrame> all_image_frame;
+  std::map<double, backend::ImageFrame> all_image_frame;
   backend::IntegrationBase* tmp_pre_integration;
 
   // relocalization variable

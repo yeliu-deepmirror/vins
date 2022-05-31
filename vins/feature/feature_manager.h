@@ -22,21 +22,18 @@ class FeaturePerFrame {
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
-  FeaturePerFrame(const Eigen::Matrix<double, 7, 1>& _point, double td) {
-    point.x() = _point(0);
-    point.y() = _point(1);
-    point.z() = _point(2);
-    uv.x() = _point(3);
-    uv.y() = _point(4);
-    velocity.x() = _point(5);
-    velocity.y() = _point(6);
-    cur_td = td;
+  FeaturePerFrame(const Eigen::Matrix<double, 7, 1>& _point, double td)
+      : cur_td(td), point(_point.segment<3>(0)) {
+    // uv.x() = _point(3);
+    // uv.y() = _point(4);
+    // velocity.x() = _point(5);
+    // velocity.y() = _point(6);
   }
   double cur_td;
   Eigen::Vector3d point;
-  Eigen::Vector2d uv;
-  Eigen::Vector2d velocity;
-  double z = INIT_DEPTH;
+  // Eigen::Vector2d uv;
+  // Eigen::Vector2d velocity;
+  // double z = INIT_DEPTH;
   bool is_used = false;
   double parallax = 0.0;
   Eigen::MatrixXd A;

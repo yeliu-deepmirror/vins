@@ -22,7 +22,8 @@ int FeatureManager::GetFeatureCount() {
 }
 
 bool FeatureManager::AddFeatureCheckParallax(
-    int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& image,
+    int frame_count,
+    const std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 7, 1>>>>& image,
     double td) {
   double parallax_sum = 0;
   int parallax_num = 0;

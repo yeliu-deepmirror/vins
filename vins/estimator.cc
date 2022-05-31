@@ -120,7 +120,7 @@ void Estimator::ProcessImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
 
   backend::ImageFrame imageframe(image, header);
   imageframe.pre_integration = tmp_pre_integration;
-  all_image_frame.insert(make_pair(header, imageframe));
+  all_image_frame.insert(std::make_pair(header, imageframe));
 
   tmp_pre_integration =
       new backend::IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count]};
@@ -868,8 +868,7 @@ void Estimator::slideWindow() {
       angular_velocity_buf[feature::WINDOW_SIZE].clear();
 
       if (true || solver_flag == INITIAL) {
-        map<double, backend::ImageFrame>::iterator it_0;
-        it_0 = all_image_frame.find(t_0);
+        std::map<double, backend::ImageFrame>::iterator it_0 = all_image_frame.find(t_0);
         delete it_0->second.pre_integration;
         it_0->second.pre_integration = nullptr;
 

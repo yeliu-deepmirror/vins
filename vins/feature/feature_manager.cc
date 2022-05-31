@@ -36,7 +36,7 @@ bool FeatureManager::AddFeatureCheckParallax(
         // we have good depth initialization (maybe from other sensor)
         it->estimated_depth = pt_cam(2);
         it->solve_flag = 3;
-        LOG(INFO) << "have initial depth";
+        std::cout << "have initial depth " << pt_cam(2) << std::endl;
       }
     } else {
       last_track_num++;

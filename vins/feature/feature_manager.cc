@@ -14,19 +14,15 @@ int FeatureManager::GetFeatureCount() {
   int cnt = 0;
   for (auto& it : feature) {
     it.used_num = it.feature_per_frame.size();
-    if (it.used_num >= 2 && it.start_frame < WINDOW_SIZE - 2) {
-      cnt++;
-    }
+    if (it.used_num >= 2 && it.start_frame < WINDOW_SIZE - 2) cnt++;
   }
   return cnt;
 }
 
 bool FeatureManager::AddFeatureCheckParallax(
     int frame_count,
-    const std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 7, 1>>>>& image,
+    const std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>>& image,
     double td) {
-  double parallax_sum = 0;
-  int parallax_num = 0;
   last_track_num = 0;
   for (auto& id_pts : image) {
     FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
@@ -46,6 +42,8 @@ bool FeatureManager::AddFeatureCheckParallax(
 
   if (frame_count < 2 || last_track_num < 20) return true;
 
+  double parallax_sum = 0;
+  int parallax_num = 0;
   for (auto& it_per_id : feature) {
     if (it_per_id.start_frame <= frame_count - 2 &&
         it_per_id.start_frame + int(it_per_id.feature_per_frame.size()) - 1 >= frame_count - 1) {
@@ -54,11 +52,8 @@ bool FeatureManager::AddFeatureCheckParallax(
     }
   }
 
-  if (parallax_num == 0) {
-    return true;
-  } else {
-    return parallax_sum / parallax_num >= MIN_PARALLAX;
-  }
+  if (parallax_num == 0) return true;
+  return parallax_sum / parallax_num >= MIN_PARALLAX;
 }
 
 std::vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> FeatureManager::GetCorresponding(

@@ -22,18 +22,11 @@ class FeaturePerFrame {
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
-  FeaturePerFrame(const Eigen::Matrix<double, 7, 1>& _point, double td)
-      : cur_td(td), point(_point.segment<3>(0)) {
-    // uv.x() = _point(3);
-    // uv.y() = _point(4);
-    // velocity.x() = _point(5);
-    // velocity.y() = _point(6);
+  FeaturePerFrame(const Eigen::Matrix<double, 3, 1>& _point, double td)
+      : cur_td(td), point(_point) {
   }
   double cur_td;
   Eigen::Vector3d point;
-  // Eigen::Vector2d uv;
-  // Eigen::Vector2d velocity;
-  // double z = INIT_DEPTH;
   bool is_used = false;
   double parallax = 0.0;
   Eigen::MatrixXd A;
@@ -78,7 +71,7 @@ class FeatureManager {
   int GetFeatureCount();
 
   bool AddFeatureCheckParallax(
-      int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& image,
+      int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 3, 1>>>>& image,
       double td);
   vector<pair<Eigen::Vector3d, Eigen::Vector3d>> GetCorresponding(int frame_count_l,
                                                                   int frame_count_r);

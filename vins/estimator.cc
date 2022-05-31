@@ -109,7 +109,7 @@ void Estimator::processIMU(double dt, const Vector3d& linear_acceleration,
   gyr_0 = angular_velocity;
 }
 
-void Estimator::ProcessImage(const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& image,
+void Estimator::ProcessImage(const map<int, vector<pair<int, Eigen::Matrix<double, 3, 1>>>>& image,
                              double header) {
   if (f_manager.AddFeatureCheckParallax(frame_count, image, td))
     marginalization_flag = MARGIN_OLD;
@@ -210,8 +210,8 @@ bool Estimator::InitialStructure() {
   // global sfm
   Quaterniond Q[frame_count + 1];
   Vector3d T[frame_count + 1];
-  map<int, Vector3d> sfm_tracked_points;
-  vector<SFMFeature> sfm_f;
+  std::map<int, Eigen::Vector3d> sfm_tracked_points;
+  std::vector<SFMFeature> sfm_f;
   for (auto& it_per_id : f_manager.feature) {
     int imu_j = it_per_id.start_frame - 1;
     SFMFeature tmp_feature;
@@ -239,9 +239,7 @@ bool Estimator::InitialStructure() {
   }
 
   // solve pnp for all frame
-  map<double, backend::ImageFrame>::iterator frame_it;
-  map<int, Vector3d>::iterator it;
-  frame_it = all_image_frame.begin();
+  std::map<double, backend::ImageFrame>::iterator frame_it = all_image_frame.begin();
   for (int i = 0; frame_it != all_image_frame.end(); frame_it++) {
     // provide initial guess
     cv::Mat r, rvec, t, D, tmp_r;
@@ -265,26 +263,22 @@ bool Estimator::InitialStructure() {
     vector<cv::Point3f> pts_3_vector;
     vector<cv::Point2f> pts_2_vector;
     for (auto& id_pts : frame_it->second.points) {
-      int feature_id = id_pts.first;
       for (auto& i_p : id_pts.second) {
-        it = sfm_tracked_points.find(feature_id);
-        if (it != sfm_tracked_points.end()) {
-          Vector3d world_pts = it->second;
-          cv::Point3f pts_3(world_pts(0), world_pts(1), world_pts(2));
-          pts_3_vector.push_back(pts_3);
-          Vector2d img_pts = i_p.second.head<2>();
-          cv::Point2f pts_2(img_pts(0), img_pts(1));
-          pts_2_vector.push_back(pts_2);
-        }
+        auto it = sfm_tracked_points.find(id_pts.first);
+        if (it == sfm_tracked_points.end()) continue;
+        const auto& world_pts = it->second;
+        pts_3_vector.emplace_back(cv::Point3f(world_pts(0), world_pts(1), world_pts(2)));
+        const auto& img_pts = i_p.second.head<2>();
+        pts_2_vector.emplace_back(cv::Point2f(img_pts(0), img_pts(1)));
       }
     }
     cv::Mat K = (cv::Mat_<double>(3, 3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);
     if (pts_3_vector.size() < 6) {
-      cout << "Not enough points for solve pnp pts_3_vector size " << pts_3_vector.size() << endl;
+      LOG(WARNING) << "Not enough points for solve pnp pts_3_vector size " << pts_3_vector.size();
       return false;
     }
     if (!cv::solvePnP(pts_3_vector, pts_2_vector, K, D, rvec, t, 1)) {
-      cout << " solve pnp fail!" << endl;
+      LOG(WARNING) << " solve pnp fail!";
       return false;
     }
     cv::Rodrigues(rvec, r);

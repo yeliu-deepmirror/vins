@@ -15,12 +15,12 @@ class ImageFrame {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
   ImageFrame(){};
-  ImageFrame(const std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 7, 1>>>>& _points,
+  ImageFrame(const std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>>& _points,
              double _t)
       : t{_t}, is_key_frame{false} {
     points = _points;
   };
-  std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 7, 1>>>> points;
+  std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>> points;
   double t;
   Eigen::Matrix3d R;
   Eigen::Vector3d T;

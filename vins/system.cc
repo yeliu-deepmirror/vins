@@ -44,6 +44,11 @@ bool System::PublishImageData(double stamp_second, cv::Mat& img, cv::Mat& depth)
   }
   PublishImuData(stamp_second, latest_acc_, latest_gyr_);
 
+  if (!depth.empty()) {
+    CHECK_EQ(img.cols, depth.cols);
+    CHECK_EQ(img.rows, depth.rows);
+  }
+
   feature_tracker_.ReadImage(img, stamp_second, true);
   feature_tracker_.UpdateIdMono();
 

@@ -42,7 +42,7 @@ bool System::PublishImageData(double stamp_second, cv::Mat& img, cv::Mat& depth)
   if (stamp_second - current_time_ > 1.0 || stamp_second < current_time_) {
     return false;
   }
-  PubImuData(stamp_second, latest_acc_, latest_gyr_);
+  PublishImuData(stamp_second, latest_acc_, latest_gyr_);
 
   feature_tracker_.ReadImage(img, stamp_second, true);
   feature_tracker_.UpdateIdMono();
@@ -50,17 +50,17 @@ bool System::PublishImageData(double stamp_second, cv::Mat& img, cv::Mat& depth)
   std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>> image;
   const auto& un_pts = feature_tracker_.vCurUndistortPts;
   const auto& feature_ids = feature_tracker_.vFeatureIds;
-  const auto& pixels = trackerData[i].vCurPts;
+  const auto& pixels = feature_tracker_.vCurPts;
   for (size_t j = 0; j < vFeatureIds.size(); j++) {
     if (feature_tracker_.vTrackCnt[j] < 2) continue;
 
-    double depth = -1.0;
+    double depth_val = -1.0;
     if (!depth.empty()) {
-      depth = depth.at<float>(pixels[i].y, pixels[i].x);
+      depth_val = depth.at<float>(pixels[i].y, pixels[i].x);
     }
 
     // use -1 for depth to indicate that we have no good initial
-    image[feature_ids[j]].emplace_back(0, Eigen::Vector3d(un_pts[j].x, un_pts[j].y, depth));
+    image[feature_ids[j]].emplace_back(0, Eigen::Vector3d(un_pts[j].x, un_pts[j].y, depth_val));
   }
 
   estimator_.ProcessImage(image, stamp_second);

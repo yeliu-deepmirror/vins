@@ -36,4 +36,6 @@ message VinsConfig {
   float acc_random_walk = 14;
   float gyr_noise = 15;
   float gyr_random_walk = 16;
+
+  bool verbose = 17;
 }

@@ -6,7 +6,7 @@
 
 namespace vins {
 
-Estimator::Estimator() : f_manager{Rs} {
+Estimator::Estimator(bool verbose) : verbose_(verbose) f_manager{Rs} {
   std::cout << "[ESTIMATOR] initialize. " << std::endl;
   ClearState(true);
 }
@@ -752,7 +752,7 @@ void Estimator::ProblemSolve() {
     }
   }
 
-  problem.Solve(NUM_ITERATIONS);
+  problem.Solve(NUM_ITERATIONS, verbose_);
 
   // update bprior_,  Hprior_ do not need update
   if (Hprior_.rows() > 0) {

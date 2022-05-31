@@ -10,7 +10,8 @@ using namespace pangolin;
 
 namespace vins {
 
-System::System(const vins::proto::VinsConfig& vins_config) : vins_config_(vins_config) {
+System::System(const vins::proto::VinsConfig& vins_config)
+    : vins_config_(vins_config), estimator_(vins_config_.verbose()) {
   Eigen::Matrix<double, 6, 1> dist_coeff;
   dist_coeff << vins_config.k1(), vins_config.k2(), vins_config.p1(), vins_config.p2(),
       vins_config.k3(), 0.0;
@@ -122,7 +123,6 @@ void System::Draw() {
 
   pangolin::OpenGlRenderState s_cam(
       pangolin::ProjectionMatrix(1024, 768, 500, 500, 512, 384, 0.1, 1000),
-      // pangolin::ModelViewLookAt(-5, 0, 15, 7, 0, 0, 1.0, 0.0, 0.0)
       pangolin::ModelViewLookAt(0, -0.7, -1.8, 0, 0, 0, 0.0, 0.0, 1.0));
 
   pangolin::View& d_cam =

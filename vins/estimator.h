@@ -26,7 +26,7 @@ namespace vins {
 class Estimator {
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
-  Estimator();
+  explicit Estimator(bool verbose);
 
   void SetParameter(const Sophus::SO3d& ric, const Eigen::Vector3d& tic);
 
@@ -63,6 +63,8 @@ class Estimator {
   enum SolverFlag { INITIAL, NON_LINEAR };
 
   enum MarginalizationFlag { MARGIN_OLD = 0, MARGIN_SECOND_NEW = 1 };
+
+  bool verbose_;
 
   //////////////// OUR SOLVER ///////////////////
   MatXX Hprior_;

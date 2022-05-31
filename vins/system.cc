@@ -14,8 +14,7 @@ System::System(const vins::proto::VinsConfig& vins_config)
     : vins_config_(vins_config),
       feature_tracker_(vins_config.equalize(), vins_config.max_num_pts(),
                        vins_config.min_pt_distance()),
-      estimator_(vins_config_.verbose()),
-{
+      estimator_(vins_config_.verbose()) {
   Eigen::Matrix<double, 6, 1> dist_coeff;
   dist_coeff << vins_config.k1(), vins_config.k2(), vins_config.p1(), vins_config.p2(),
       vins_config.k3(), 0.0;

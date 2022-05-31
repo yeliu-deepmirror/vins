@@ -31,7 +31,7 @@ std::vector<size_t> ArgSortVector(const std::vector<T>& v);
 
 class FeatureTracker {
  public:
-  FeatureTracker();
+  FeatureTracker(bool equalize, int max_num_pts, int min_pt_distance);
 
   void ReadImage(const cv::Mat& _img, double _cur_time, bool bPublish);
   void UndistortedPoints();

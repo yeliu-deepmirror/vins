@@ -67,7 +67,8 @@ std::vector<size_t> ArgSortVector(const std::vector<T>& v) {
   return idx;
 }
 
-FeatureTracker::FeatureTracker() {}
+FeatureTracker::FeatureTracker(bool equalize, int max_num_pts, int min_pt_distance)
+    : equalize_(equalize), max_num_pts_(max_num_pts), min_pt_distance_(min_pt_distance) {}
 
 void FeatureTracker::GetMaskAndFilterPoints(cv::Mat& mMask) {
   mMask = cv::Mat(intrinsic_.row_, intrinsic_.col_, CV_8UC1, cv::Scalar(255));

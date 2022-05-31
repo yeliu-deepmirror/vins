@@ -25,9 +25,7 @@ class System {
  private:
   const vins::proto::VinsConfig vins_config_;
 
-  feature::FeatureTracker trackerData[feature::NUM_OF_CAM];
-
-  // estimator
+  feature::FeatureTracker feature_tracker_;
   Estimator estimator_;
 
   double current_time_ = -1;

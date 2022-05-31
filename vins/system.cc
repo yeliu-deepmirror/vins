@@ -11,12 +11,16 @@ using namespace pangolin;
 namespace vins {
 
 System::System(const vins::proto::VinsConfig& vins_config)
-    : vins_config_(vins_config), estimator_(vins_config_.verbose()) {
+    : vins_config_(vins_config),
+      feature_tracker_(vins_config.equalize(), vins_config.max_num_pts(),
+                       vins_config.min_pt_distance()),
+      estimator_(vins_config_.verbose()),
+{
   Eigen::Matrix<double, 6, 1> dist_coeff;
   dist_coeff << vins_config.k1(), vins_config.k2(), vins_config.p1(), vins_config.p2(),
       vins_config.k3(), 0.0;
   // read config from proto
-  trackerData[0].SetIntrinsicParameter(feature::CameraIntrinsic{
+  feature_tracker_.SetIntrinsicParameter(feature::CameraIntrinsic{
       vins_config.image_width(), vins_config.image_height(), vins_config.fx(), vins_config.fy(),
       vins_config.cx(), vins_config.cy(), dist_coeff});
 
@@ -41,25 +45,23 @@ bool System::PubImageData(double stamp_second, cv::Mat& img) {
   }
   PubImuData(stamp_second, latest_acc_, latest_gyr_);
 
-  trackerData[0].ReadImage(img, stamp_second, true);
-  trackerData[0].UpdateIdMono();
+  feature_tracker_.ReadImage(img, stamp_second, true);
+  feature_tracker_.UpdateIdMono();
 
   std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 7, 1>>>> image;
-  for (int i = 0; i < feature::NUM_OF_CAM; i++) {
-    auto& un_pts = trackerData[i].vCurUndistortPts;
-    auto& vCurPts = trackerData[i].vCurPts;
-    auto& vFeatureIds = trackerData[i].vFeatureIds;
-    auto& vFeatureVelocity = trackerData[i].vFeatureVelocity;
-    for (size_t j = 0; j < vFeatureIds.size(); j++) {
-      if (trackerData[i].vTrackCnt[j] < 2) continue;
-      int p_id = vFeatureIds[j];
-      double x = un_pts[j].x;
-      double y = un_pts[j].y;
-      Eigen::Matrix<double, 7, 1> xyz_uv_velocity;
-      xyz_uv_velocity << x, y, 1.0, vCurPts[j].x, vCurPts[j].y, vFeatureVelocity[j].x,
-          vFeatureVelocity[j].y;
-      image[vFeatureIds[j]].emplace_back(i, xyz_uv_velocity);
-    }
+  auto& un_pts = feature_tracker_.vCurUndistortPts;
+  auto& vCurPts = feature_tracker_.vCurPts;
+  auto& vFeatureIds = feature_tracker_.vFeatureIds;
+  auto& vFeatureVelocity = feature_tracker_.vFeatureVelocity;
+  for (size_t j = 0; j < vFeatureIds.size(); j++) {
+    if (feature_tracker_.vTrackCnt[j] < 2) continue;
+    int p_id = vFeatureIds[j];
+    double x = un_pts[j].x;
+    double y = un_pts[j].y;
+    Eigen::Matrix<double, 7, 1> xyz_uv_velocity;
+    xyz_uv_velocity << x, y, 1.0, vCurPts[j].x, vCurPts[j].y, vFeatureVelocity[j].x,
+        vFeatureVelocity[j].y;
+    image[vFeatureIds[j]].emplace_back(0, xyz_uv_velocity);
   }
 
   estimator_.ProcessImage(image, stamp_second);
@@ -78,10 +80,10 @@ bool System::PubImageData(double stamp_second, cv::Mat& img) {
     cv::Mat show_img;
     cv::cvtColor(img, show_img, cv::COLOR_GRAY2BGR);
 
-    for (unsigned int j = 0; j < trackerData[0].vCurPts.size(); j++) {
-      double len = min(1.0, 1.0 * trackerData[0].vTrackCnt[j] / WINDOW_SIZE);
-      cv::circle(show_img, trackerData[0].vCurPts[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len),
-                 2);
+    for (unsigned int j = 0; j < feature_tracker_.vCurPts.size(); j++) {
+      double len = min(1.0, 1.0 * feature_tracker_.vTrackCnt[j] / WINDOW_SIZE);
+      cv::circle(show_img, feature_tracker_.vCurPts[j], 2,
+                 cv::Scalar(255 * (1 - len), 0, 255 * len), 2);
     }
     cv::imshow("IMAGE", show_img);
     cv::waitKey(1);

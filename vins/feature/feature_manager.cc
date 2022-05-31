@@ -37,7 +37,7 @@ bool FeatureManager::AddFeatureCheckParallax(
       // it->feature_per_frame.emplace_back(FeaturePerFrame(pt_cam));
       last_track_num++;
     }
-    const Eigen::Vector3& pt_cam = id_pts.second[0].second;
+    const Eigen::Vector3d& pt_cam = id_pts.second[0].second;
     it->feature_per_frame.emplace_back(FeaturePerFrame(pt_cam));
   }
 

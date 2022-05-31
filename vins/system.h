@@ -19,8 +19,9 @@ class System {
   ~System();
 
   // push in real image and IMU data
-  bool PubImageData(double dStampSec, cv::Mat& img);
-  bool PubImuData(double stamp_second, const Eigen::Vector3d& acc, const Eigen::Vector3d& gyr);
+  // depth should be float scalar
+  bool PublishImageData(double dStampSec, cv::Mat& img, cv::Mat& depth = cv::Mat());
+  bool PublishImuData(double stamp_second, const Eigen::Vector3d& acc, const Eigen::Vector3d& gyr);
 
  private:
   const vins::proto::VinsConfig vins_config_;

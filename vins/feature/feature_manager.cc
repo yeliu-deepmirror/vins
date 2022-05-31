@@ -28,13 +28,15 @@ bool FeatureManager::AddFeatureCheckParallax(
     std::list<FeaturePerId>::iterator it =
         find_if(feature.begin(), feature.end(),
                 [feature_id](const FeaturePerId& it) { return it.feature_id == feature_id; });
-    // const Eigen::Vector3& pt_cam = id_pts.second[0].second;
     if (it == feature.end()) {
       feature.push_back(FeaturePerId(feature_id, frame_count));
       it = std::prev(feature.end());
-      // feature.back().feature_per_frame.emplace_back(FeaturePerFrame(pt_cam));
+      if (pt_cam(2) > 0.1) {
+        // we have good depth initialization (maybe from other sensor)
+        it->estimated_depth = pt_cam(2);
+        it->solve_flag = 3;
+      }
     } else {
-      // it->feature_per_frame.emplace_back(FeaturePerFrame(pt_cam));
       last_track_num++;
     }
     const Eigen::Vector3d& pt_cam = id_pts.second[0].second;
@@ -72,12 +74,15 @@ std::vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> FeatureManager::GetCorr
 }
 
 void FeatureManager::SetDepth(const Eigen::VectorXd& x) {
-  int feature_index = -1;
+  int feature_index = 0;
   for (auto& it_per_id : feature) {
     it_per_id.used_num = it_per_id.feature_per_frame.size();
     if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2)) continue;
+    double depth = 1.0 / x(feature_index++);
 
-    it_per_id.estimated_depth = 1.0 / x(++feature_index);
+    if (it_per_id.solve_flag == 3) continue;
+
+    it_per_id.estimated_depth = depth;
     if (it_per_id.estimated_depth < 0) {
       it_per_id.solve_flag = 2;
     } else {
@@ -154,18 +159,6 @@ void FeatureManager::triangulate(Eigen::Vector3d Ps[], Eigen::Vector3d tic,
     it_per_id.estimated_depth = svd_V[2] / svd_V[3];
     if (it_per_id.estimated_depth < 0.1) {
       it_per_id.estimated_depth = INIT_DEPTH;
-    }
-  }
-}
-
-void FeatureManager::removeOutlier() {
-  return;
-  int i = -1;
-  for (auto it = feature.begin(), it_next = feature.begin(); it != feature.end(); it = it_next) {
-    it_next++;
-    i += it->used_num != 0;
-    if (it->used_num != 0 && it->is_outlier == true) {
-      feature.erase(it);
     }
   }
 }

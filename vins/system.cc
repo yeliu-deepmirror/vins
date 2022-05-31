@@ -36,7 +36,7 @@ System::~System() {
   estimator_.ClearState();
 }
 
-bool System::PubImageData(double stamp_second, cv::Mat& img) {
+bool System::PublishImageData(double stamp_second, cv::Mat& img, cv::Mat& depth) {
   // detect unstable camera stream
   //   -- that receive the image to late or early image
   if (stamp_second - current_time_ > 1.0 || stamp_second < current_time_) {
@@ -48,12 +48,19 @@ bool System::PubImageData(double stamp_second, cv::Mat& img) {
   feature_tracker_.UpdateIdMono();
 
   std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>> image;
-  auto& un_pts = feature_tracker_.vCurUndistortPts;
-  auto& vFeatureIds = feature_tracker_.vFeatureIds;
+  const auto& un_pts = feature_tracker_.vCurUndistortPts;
+  const auto& feature_ids = feature_tracker_.vFeatureIds;
+  const auto& pixels = trackerData[i].vCurPts;
   for (size_t j = 0; j < vFeatureIds.size(); j++) {
     if (feature_tracker_.vTrackCnt[j] < 2) continue;
+
+    double depth = -1.0;
+    if (!depth.empty()) {
+      depth = depth.at<float>(pixels[i].y, pixels[i].x);
+    }
+
     // use -1 for depth to indicate that we have no good initial
-    image[vFeatureIds[j]].emplace_back(0, Eigen::Vector3d(un_pts[j].x, un_pts[j].y, -1.0));
+    image[feature_ids[j]].emplace_back(0, Eigen::Vector3d(un_pts[j].x, un_pts[j].y, depth));
   }
 
   estimator_.ProcessImage(image, stamp_second);
@@ -83,8 +90,8 @@ bool System::PubImageData(double stamp_second, cv::Mat& img) {
   return true;
 }
 
-bool System::PubImuData(double stamp_second, const Eigen::Vector3d& acc,
-                        const Eigen::Vector3d& gyr) {
+bool System::PublishImuData(double stamp_second, const Eigen::Vector3d& acc,
+                            const Eigen::Vector3d& gyr) {
   if (stamp_second <= current_time_) {
     cerr << "imu message in disorder!" << stamp_second << " " << current_time_ << endl;
     return false;

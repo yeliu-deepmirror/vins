@@ -20,7 +20,7 @@ const double INIT_DEPTH = 2.0;
 
 struct FeaturePerFrame {
   explicit FeaturePerFrame(const Eigen::Matrix<double, 3, 1>& _point) : point(_point) {
-    if (point(2) < 0.0) point(2) = 1.0;
+    if (point(2) < 0.1) point(2) = 1.0;
   }
   Eigen::Vector3d point;
 };
@@ -34,10 +34,10 @@ class FeaturePerId {
   std::vector<FeaturePerFrame> feature_per_frame;
 
   int used_num;
-  bool is_outlier;
-  bool is_margin;
   double estimated_depth;
-  int solve_flag;  // 0 haven't solve yet; 1 solve succ; 2 solve fail; 3 good initial
+  // 0 haven't solve yet; 1 solve succ; 2 solve fail; 3 good initial
+  // we good initial we will skip optimization & triangulation
+  int solve_flag;
 
   FeaturePerId(int _feature_id, int _start_frame)
       : feature_id(_feature_id),
@@ -74,7 +74,6 @@ class FeatureManager {
                             Eigen::Vector3d new_P);
   void RemoveBack();
   void removeFront(int frame_count);
-  void removeOutlier();
 
   std::list<FeaturePerId> feature;
   int last_track_num;

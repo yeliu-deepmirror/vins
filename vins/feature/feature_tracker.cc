@@ -107,7 +107,7 @@ void FeatureTracker::ReadImage(const cv::Mat& _img, double _cur_time, bool bPubl
   cur_time = _cur_time;
 
   if (equalize_) {
-    cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(3.0, cv::Size(8, 8));
+    static cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(3.0, cv::Size(4, 4));
     clahe->apply(_img, img);
   } else {
     img = _img;

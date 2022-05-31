@@ -19,7 +19,9 @@ const double MIN_PARALLAX = 0.04;
 const double INIT_DEPTH = 2.0;
 
 struct FeaturePerFrame {
-  explicit FeaturePerFrame(const Eigen::Matrix<double, 3, 1>& _point) : point(_point) {}
+  explicit FeaturePerFrame(const Eigen::Matrix<double, 3, 1>& _point) : point(_point) {
+    if (point(2) < 0.0) point(2) = 1.0;
+  }
   Eigen::Vector3d point;
 };
 
@@ -35,7 +37,7 @@ class FeaturePerId {
   bool is_outlier;
   bool is_margin;
   double estimated_depth;
-  int solve_flag;  // 0 haven't solve yet; 1 solve succ; 2 solve fail;
+  int solve_flag;  // 0 haven't solve yet; 1 solve succ; 2 solve fail; 3 good initial
 
   FeaturePerId(int _feature_id, int _start_frame)
       : feature_id(_feature_id),

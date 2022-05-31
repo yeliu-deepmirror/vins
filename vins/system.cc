@@ -52,7 +52,8 @@ bool System::PubImageData(double stamp_second, cv::Mat& img) {
   auto& vFeatureIds = feature_tracker_.vFeatureIds;
   for (size_t j = 0; j < vFeatureIds.size(); j++) {
     if (feature_tracker_.vTrackCnt[j] < 2) continue;
-    image[vFeatureIds[j]].emplace_back(0, Eigen::Vector3d(un_pts[j].x, un_pts[j].y, 1.0));
+    // use -1 for depth to indicate that we have no good initial
+    image[vFeatureIds[j]].emplace_back(0, Eigen::Vector3d(un_pts[j].x, un_pts[j].y, -1.0));
   }
 
   estimator_.ProcessImage(image, stamp_second);

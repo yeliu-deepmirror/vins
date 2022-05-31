@@ -25,15 +25,20 @@ bool FeatureManager::AddFeatureCheckParallax(
   last_track_num = 0;
   for (auto& id_pts : image) {
     int feature_id = id_pts.first;
-    auto it = find_if(feature.begin(), feature.end(),
-                      [feature_id](const FeaturePerId& it) { return it.feature_id == feature_id; });
+    std::list<FeaturePerId>::iterator it =
+        find_if(feature.begin(), feature.end(),
+                [feature_id](const FeaturePerId& it) { return it.feature_id == feature_id; });
+    // const Eigen::Vector3& pt_cam = id_pts.second[0].second;
     if (it == feature.end()) {
       feature.push_back(FeaturePerId(feature_id, frame_count));
-      feature.back().feature_per_frame.emplace_back(FeaturePerFrame(id_pts.second[0].second));
+      it = std::prev(feature.end());
+      // feature.back().feature_per_frame.emplace_back(FeaturePerFrame(pt_cam));
     } else {
-      it->feature_per_frame.emplace_back(FeaturePerFrame(id_pts.second[0].second));
+      // it->feature_per_frame.emplace_back(FeaturePerFrame(pt_cam));
       last_track_num++;
     }
+    const Eigen::Vector3& pt_cam = id_pts.second[0].second;
+    it->feature_per_frame.emplace_back(FeaturePerFrame(pt_cam));
   }
 
   if (frame_count < 2 || last_track_num < 20) return true;
@@ -75,8 +80,9 @@ void FeatureManager::SetDepth(const Eigen::VectorXd& x) {
     it_per_id.estimated_depth = 1.0 / x(++feature_index);
     if (it_per_id.estimated_depth < 0) {
       it_per_id.solve_flag = 2;
-    } else
+    } else {
       it_per_id.solve_flag = 1;
+    }
   }
 }
 

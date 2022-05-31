@@ -121,7 +121,7 @@ void System::PubImageData(double dStampSec, cv::Mat& img) {
 
   if (SHOW_TRACK) {
     cv::Mat show_img;
-    cv::cvtColor(img, show_img, cv::COLOR_BGR2GRAY);
+    cv::cvtColor(img, show_img, cv::COLOR_GRAY2BGR);
 
     for (unsigned int j = 0; j < trackerData[0].vCurPts.size(); j++) {
       double len = min(1.0, 1.0 * trackerData[0].vTrackCnt[j] / WINDOW_SIZE);

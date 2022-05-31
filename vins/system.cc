@@ -121,15 +121,13 @@ void System::PubImageData(double dStampSec, cv::Mat& img) {
 
   if (SHOW_TRACK) {
     cv::Mat show_img;
-    cv::cvtColor(img, show_img, CV_GRAY2RGB);
+    cv::cvtColor(img, show_img, cv::COLOR_BGR2GRAY);
 
     for (unsigned int j = 0; j < trackerData[0].vCurPts.size(); j++) {
       double len = min(1.0, 1.0 * trackerData[0].vTrackCnt[j] / WINDOW_SIZE);
       cv::circle(show_img, trackerData[0].vCurPts[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len),
                  2);
     }
-
-    cv::namedWindow("IMAGE", CV_WINDOW_AUTOSIZE);
     cv::imshow("IMAGE", show_img);
     cv::waitKey(1);
   }
@@ -140,7 +138,6 @@ std::vector<std::pair<std::vector<ImuConstPtr>, ImgConstPtr>> System::getMeasure
 
   while (true) {
     if (imu_buf.empty() || feature_buf.empty()) {
-      // cerr << "1 imu_buf.empty() || feature_buf.empty()" << endl;
       return measurements;
     }
 
@@ -164,15 +161,10 @@ std::vector<std::pair<std::vector<ImuConstPtr>, ImgConstPtr>> System::getMeasure
       IMUs.emplace_back(imu_buf.front());
       imu_buf.pop();
     }
-    // cout << "1 getMeasurements IMUs size: " << IMUs.size() << endl;
     IMUs.emplace_back(imu_buf.front());
     if (IMUs.empty()) {
       cerr << "no imu between two image" << endl;
     }
-    // cout << "1 getMeasurements img t: " << fixed << img_msg->header
-    //     << " imu begin: "<< IMUs.front()->header
-    //     << " end: " << IMUs.back()->header
-    //     << endl;
     measurements.emplace_back(IMUs, img_msg);
   }
   return measurements;

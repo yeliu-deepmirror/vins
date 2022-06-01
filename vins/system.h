@@ -6,6 +6,7 @@
 
 #include "vins/estimator.h"
 #include "vins/proto/vins_config.pb.h"
+#include "sophus/se3.hpp"
 
 #include <pangolin/pangolin.h>
 
@@ -20,10 +21,11 @@ class System {
 
   // push in real image and IMU data
   // depth should be float scalar
-  bool PublishImageData(double dStampSec, cv::Mat& img, cv::Mat& depth);
-  bool PublishImuData(double stamp_second, const Eigen::Vector3d& acc, const Eigen::Vector3d& gyr);
+  bool PublishImageData(int64_t timestamp, cv::Mat& img, cv::Mat& depth);
+  bool PublishImuData(int64_t timestamp, const Eigen::Vector3d& acc, const Eigen::Vector3d& gyr);
+  void ShowTrack(cv::Mat* image);
 
- // private:
+  // private:
   const vins::proto::VinsConfig vins_config_;
 
   feature::FeatureTracker feature_tracker_;
@@ -34,9 +36,8 @@ class System {
   Eigen::Vector3d latest_acc_;
   Eigen::Vector3d latest_gyr_;
 
-  std::vector<Eigen::Vector3d> vPath_to_draw;  // history path of body(IMU)
-
-  std::vector<double> corresponding_timestamps;
+  // buffer the trajectory
+  std::vector<Eigen::Vector3d> frame_positions_;  // history path of body(IMU
   std::vector<Eigen::Matrix<double, 3, 4>> keyframe_history;  // record all the past keyframes
 
  public:

@@ -37,9 +37,6 @@ class Estimator {
   void ProcessImage(const map<int, vector<pair<int, Eigen::Matrix<double, 3, 1>>>>& image,
                     double header);
 
-  void setReloFrame(double _frame_stamp, int _frame_index, vector<Vector3d>& _match_points,
-                    Vector3d _relo_t, Matrix3d _relo_r);
-
   Eigen::Matrix<double, 3, 4> GetCurrentCameraPose();
 
   // internal
@@ -141,8 +138,6 @@ class Estimator {
   backend::IntegrationBase* tmp_pre_integration;
 
   // relocalization variable
-  bool relocalization_info;
-  double relo_frame_stamp;
   double relo_frame_index;
   int relo_frame_local_index;
   vector<Vector3d> match_points;

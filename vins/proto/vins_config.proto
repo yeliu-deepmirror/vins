@@ -38,7 +38,8 @@ message VinsConfig {
   float gyr_random_walk = 16;
 
   bool verbose = 17;
-  bool equalize = 18;
-  int32 max_num_pts = 19;
-  int32 min_pt_distance = 20;
+  bool viz = 18;
+  bool equalize = 19;
+  int32 max_num_pts = 20;
+  int32 min_pt_distance = 21;
 }

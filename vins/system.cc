@@ -36,13 +36,19 @@ System::~System() {
   estimator_.ClearState();
 }
 
-bool System::PublishImageData(double stamp_second, cv::Mat& img, cv::Mat& depth) {
+bool System::PublishImageData(int64_t timestamp, cv::Mat& img, cv::Mat& depth) {
+  double stamp_second = static_cast<double>(timestamp) * 1e-9;
   // detect unstable camera stream
   //   -- that receive the image to late or early image
   if (stamp_second - current_time_ > 1.0 || stamp_second < current_time_) {
     return false;
   }
   PublishImuData(stamp_second, latest_acc_, latest_gyr_);
+
+  if (!depth.empty()) {
+    CHECK_EQ(img.cols, depth.cols);
+    CHECK_EQ(img.rows, depth.rows);
+  }
 
   feature_tracker_.ReadImage(img, stamp_second, true);
   feature_tracker_.UpdateIdMono();
@@ -65,33 +71,37 @@ bool System::PublishImageData(double stamp_second, cv::Mat& img, cv::Mat& depth)
 
   estimator_.ProcessImage(image, stamp_second);
 
-  if (SHOW_TRACK) {
-    if (estimator_.solver_flag == Estimator::SolverFlag::NON_LINEAR) {
-      Eigen::Vector3d p_wi;
-      Eigen::Quaterniond q_wi;
-      q_wi = Quaterniond(estimator_.Rs[WINDOW_SIZE]);
-      p_wi = estimator_.Ps[WINDOW_SIZE];
+  if (estimator_.solver_flag == Estimator::SolverFlag::NON_LINEAR) {
+    frame_positions_.push_back(estimator_.Ps[WINDOW_SIZE]);
+  }
 
-      vPath_to_draw.push_back(p_wi);
-      keyframe_history.push_back(estimator_.GetCurrentCameraPose());
-    }
-
-    cv::Mat show_img;
-    cv::cvtColor(img, show_img, cv::COLOR_GRAY2BGR);
-
-    for (unsigned int j = 0; j < feature_tracker_.vCurPts.size(); j++) {
-      double len = min(1.0, 1.0 * feature_tracker_.vTrackCnt[j] / WINDOW_SIZE);
-      cv::circle(show_img, feature_tracker_.vCurPts[j], 2,
-                 cv::Scalar(255 * (1 - len), 0, 255 * len), 2);
-    }
+  if (vins_config_.viz()) {
+    keyframe_history.push_back(estimator_.GetCurrentCameraPose());
+    cv::Mat show_img = img;
+    ShowTrack(&show_img);
     cv::imshow("IMAGE", show_img);
     cv::waitKey(1);
   }
   return true;
 }
 
-bool System::PublishImuData(double stamp_second, const Eigen::Vector3d& acc,
+void System::ShowTrack(cv::Mat* image) {
+  CHECK(image != nullptr);
+
+  if (image->channels() == 1) {
+    cv::cvtColor(*image, *image, cv::COLOR_GRAY2BGR);
+  }
+
+  for (unsigned int j = 0; j < feature_tracker_.vCurPts.size(); j++) {
+    double len = min(1.0, 1.0 * feature_tracker_.vTrackCnt[j] / WINDOW_SIZE);
+    cv::circle(*image, feature_tracker_.vCurPts[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len),
+               2);
+  }
+}
+
+bool System::PublishImuData(int64_t timestamp, const Eigen::Vector3d& acc,
                             const Eigen::Vector3d& gyr) {
+  double stamp_second = static_cast<double>(timestamp) * 1e-9;
   if (stamp_second <= current_time_) {
     cerr << "imu message in disorder!" << stamp_second << " " << current_time_ << endl;
     return false;
@@ -143,10 +153,10 @@ void System::Draw() {
     glColor3f(0, 0, 0);
     glLineWidth(2);
     glBegin(GL_LINES);
-    int nPath_size = vPath_to_draw.size();
+    int nPath_size = frame_positions_.size();
     for (int i = 0; i < nPath_size - 1; ++i) {
-      glVertex3f(vPath_to_draw[i].x(), vPath_to_draw[i].y(), vPath_to_draw[i].z());
-      glVertex3f(vPath_to_draw[i + 1].x(), vPath_to_draw[i + 1].y(), vPath_to_draw[i + 1].z());
+      glVertex3f(frame_positions_[i].x(), frame_positions_[i].y(), frame_positions_[i].z());
+      glVertex3f(frame_positions_[i + 1].x(), frame_positions_[i + 1].y(), frame_positions_[i + 1].z());
     }
     glEnd();
 

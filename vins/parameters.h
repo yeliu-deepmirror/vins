@@ -4,8 +4,6 @@
 #include <fstream>
 #include <vector>
 
-#define SHOW_TRACK true
-
 // feature tracker parameters
 // as the feature are parameterized by inverse depth, which only need one parameter, will make a
 // perfect diagonal matrix which is extremely fast for solve, so we could add more features without

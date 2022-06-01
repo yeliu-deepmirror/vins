@@ -69,7 +69,6 @@ void Estimator::ClearState(bool bInit) {
   f_manager.ClearState();
 
   failure_occur = 0;
-  relocalization_info = 0;
 
   drift_correct_r = Matrix3d::Identity();
   drift_correct_t = Vector3d::Zero();

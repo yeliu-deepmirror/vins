@@ -33,5 +33,6 @@ cc_library(
         ":estimator",
         "//vins/proto:vins_config_cc_proto",
         "@pangolin",
+        "@sophus",
     ],
 )

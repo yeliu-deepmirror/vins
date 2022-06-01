@@ -35,7 +35,7 @@ bool FeatureManager::AddFeatureCheckParallax(
       if (pt_cam(2) > 0.1) {
         // we have good depth initialization (maybe from other sensor)
         it->estimated_depth = pt_cam(2);
-        it->solve_flag = 3;
+        // it->solve_flag = 3;
       }
     } else {
       last_track_num++;

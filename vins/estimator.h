@@ -34,8 +34,8 @@ class Estimator {
   void processIMU(double t, const Vector3d& linear_acceleration, const Vector3d& angular_velocity);
 
   // original VINS interface for image (which support stereo camera)
-  void ProcessImage(const map<int, vector<pair<int, Eigen::Matrix<double, 3, 1>>>>& image,
-                    double header);
+  void ProcessImage(const std::map<int, std::vector<std::pair<int, Eigen::Vector3d>>>& image,
+                    int64_t header);
 
   Eigen::Matrix<double, 3, 4> GetCurrentCameraPose();
 
@@ -47,7 +47,7 @@ class Estimator {
   void slideWindow();
   void SolveOdometry();
   void slideWindowNew();
-  void slideWindowOld();
+  void slideWindowOld(const Eigen::Matrix3d& back_R0, const Eigen::Vector3d& back_P0);
   void optimization();
   void BackendOptimization();
 
@@ -89,9 +89,9 @@ class Estimator {
   VectorXd vInverseDepth;
   double td;
 
-  Matrix3d back_R0, last_R, last_R0;
-  Vector3d back_P0, last_P, last_P0;
-  double Headers[(feature::WINDOW_SIZE + 1)];
+  Matrix3d last_R, last_R0;
+  Vector3d last_P, last_P0;
+  int64_t Headers[(feature::WINDOW_SIZE + 1)];
 
   backend::IntegrationBase* pre_integrations[(feature::WINDOW_SIZE + 1)];
   Vector3d acc_0, gyr_0;
@@ -101,13 +101,11 @@ class Estimator {
   vector<Vector3d> angular_velocity_buf[(feature::WINDOW_SIZE + 1)];
 
   int frame_count;
-  int sum_of_outlier, sum_of_back, sum_of_front, sum_of_invalid;
 
   feature::FeatureManager f_manager;
   MotionEstimator m_estimator;
 
   bool first_imu;
-  bool is_valid, is_key;
   bool failure_occur;
 
   // point cloud saved
@@ -116,39 +114,16 @@ class Estimator {
   vector<Vector3d> margin_cloud;
   vector<vector<Vector3d>> margin_cloud_cloud;
   vector<Vector3d> key_poses;
-  double initial_timestamp;
+  int64_t initial_timestamp;
 
   void SaveMarginalizedFrameHostedPoints(vins::backend::Problem& problem);
   void UpdateCurrentPointcloud();
 
-  double para_Pose[feature::WINDOW_SIZE + 1][SIZE_POSE];  // x, y, z, qx, qy, qz, qw
-  double para_SpeedBias[feature::WINDOW_SIZE + 1]
-                       [SIZE_SPEEDBIAS];                // vx, vy, vz, bax, bay, baz, bgx, bgy, bgz
-  double para_Ex_Pose[feature::NUM_OF_CAM][SIZE_POSE];  // tic : x, y, z, qx, qy, qz, qw
-  double para_Retrive_Pose[SIZE_POSE];                  // not used
-  double para_Td[1][1];                                 // td
-  double para_Tr[1][1];                                 // tr
-
-  int loop_window_index;
-
   // MarginalizationInfo *last_marginalization_info;
   vector<double*> last_marginalization_parameter_blocks;
 
-  std::map<double, backend::ImageFrame> all_image_frame;
+  std::map<int64_t, backend::ImageFrame> all_image_frame;
   backend::IntegrationBase* tmp_pre_integration;
-
-  // relocalization variable
-  double relo_frame_index;
-  int relo_frame_local_index;
-  vector<Vector3d> match_points;
-  double relo_Pose[SIZE_POSE];
-  Matrix3d drift_correct_r;
-  Vector3d drift_correct_t;
-  Vector3d prev_relo_t;
-  Matrix3d prev_relo_r;
-  Vector3d relo_relative_t;
-  Quaterniond relo_relative_q;
-  double relo_relative_yaw;
 };
 
 }  // namespace vins

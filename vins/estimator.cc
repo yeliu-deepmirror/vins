@@ -51,8 +51,7 @@ void Estimator::ClearState(bool bInit) {
   }
 
   solver_flag = INITIAL;
-  first_imu = false, sum_of_back = 0;
-  sum_of_front = 0;
+  first_imu = false;
   frame_count = 0;
   solver_flag = INITIAL;
   initial_timestamp = 0;
@@ -69,9 +68,6 @@ void Estimator::ClearState(bool bInit) {
   f_manager.ClearState();
 
   failure_occur = 0;
-
-  drift_correct_r = Matrix3d::Identity();
-  drift_correct_t = Vector3d::Zero();
 }
 
 void Estimator::processIMU(double dt, const Vector3d& linear_acceleration,
@@ -108,8 +104,8 @@ void Estimator::processIMU(double dt, const Vector3d& linear_acceleration,
   gyr_0 = angular_velocity;
 }
 
-void Estimator::ProcessImage(const map<int, vector<pair<int, Eigen::Matrix<double, 3, 1>>>>& image,
-                             double header) {
+void Estimator::ProcessImage(
+    const std::map<int, std::vector<std::pair<int, Eigen::Vector3d>>>& image, int64_t header) {
   if (f_manager.AddFeatureCheckParallax(frame_count, image, td))
     marginalization_flag = MARGIN_OLD;
   else
@@ -119,7 +115,7 @@ void Estimator::ProcessImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
 
   backend::ImageFrame imageframe(image, header);
   imageframe.pre_integration = tmp_pre_integration;
-  all_image_frame.insert(std::make_pair(header, imageframe));
+  all_image_frame.emplace(header, std::move(imageframe));
 
   tmp_pre_integration =
       new backend::IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count]};
@@ -127,7 +123,7 @@ void Estimator::ProcessImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
   if (solver_flag == INITIAL) {
     if (frame_count == feature::WINDOW_SIZE) {
       bool result = false;
-      if (header - initial_timestamp > 0.1) {
+      if (header - initial_timestamp > 1e8) {
         result = InitialStructure();
         initial_timestamp = header;
       }
@@ -176,7 +172,8 @@ void Estimator::ProcessImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
 Eigen::Matrix<double, 3, 4> Estimator::GetCurrentCameraPose() {
   Eigen::Matrix<double, 3, 4> Twc;
   Twc.block(0, 0, 3, 3) = Rs[feature::WINDOW_SIZE] * rigid_ic_.so3().matrix();
-  Twc.block(0, 3, 3, 1) = Rs[feature::WINDOW_SIZE] * rigid_ic_.translation() + Ps[feature::WINDOW_SIZE];
+  Twc.block(0, 3, 3, 1) =
+      Rs[feature::WINDOW_SIZE] * rigid_ic_.translation() + Ps[feature::WINDOW_SIZE];
   return Twc;
 }
 
@@ -184,16 +181,14 @@ bool Estimator::InitialStructure() {
   TicToc t_sfm;
   // check imu observibility
   {
-    map<double, backend::ImageFrame>::iterator frame_it;
-    Vector3d sum_g;
+    std::map<int64_t, backend::ImageFrame>::iterator frame_it;
+    Eigen::Vector3d sum_g = Vector3d::Zero();
     for (frame_it = all_image_frame.begin(), frame_it++; frame_it != all_image_frame.end();
          frame_it++) {
       double dt = frame_it->second.pre_integration->sum_dt;
-      Vector3d tmp_g = frame_it->second.pre_integration->delta_v / dt;
-      sum_g += tmp_g;
+      sum_g += frame_it->second.pre_integration->delta_v / dt;
     }
-    Vector3d aver_g;
-    aver_g = sum_g * 1.0 / ((int)all_image_frame.size() - 1);
+    Vector3d aver_g = sum_g * 1.0 / ((int)all_image_frame.size() - 1);
     double var = 0;
     for (frame_it = all_image_frame.begin(), frame_it++; frame_it != all_image_frame.end();
          frame_it++) {
@@ -238,7 +233,7 @@ bool Estimator::InitialStructure() {
   }
 
   // solve pnp for all frame
-  std::map<double, backend::ImageFrame>::iterator frame_it = all_image_frame.begin();
+  std::map<int64_t, backend::ImageFrame>::iterator frame_it = all_image_frame.begin();
   for (int i = 0; frame_it != all_image_frame.end(); frame_it++) {
     // provide initial guess
     cv::Mat r, rvec, t, D, tmp_r;
@@ -328,11 +323,12 @@ bool Estimator::visualInitialAlign() {
     pre_integrations[i]->repropagate(Vector3d::Zero(), Bgs[i]);
   }
   for (int i = frame_count; i >= 0; i--) {
-    Ps[i] = s * Ps[i] - Rs[i] * rigid_ic_.translation() - (s * Ps[0] - Rs[0] * rigid_ic_.translation());
+    Ps[i] =
+        s * Ps[i] - Rs[i] * rigid_ic_.translation() - (s * Ps[0] - Rs[0] * rigid_ic_.translation());
   }
   int kv = -1;
-  map<double, backend::ImageFrame>::iterator frame_i;
-  for (frame_i = all_image_frame.begin(); frame_i != all_image_frame.end(); frame_i++) {
+  for (std::map<int64_t, backend::ImageFrame>::iterator frame_i = all_image_frame.begin();
+       frame_i != all_image_frame.end(); frame_i++) {
     if (frame_i->second.is_key_frame) {
       kv++;
       Vs[kv] = frame_i->second.R * x.segment<3>(kv * 3);
@@ -567,8 +563,6 @@ void Estimator::MargNewFrame() {
   shared_ptr<backend::VertexPose> vertexExt(new backend::VertexPose());
   {
     Eigen::VectorXd pose = vPic[0];
-    // pose << para_Ex_Pose[0][0], para_Ex_Pose[0][1], para_Ex_Pose[0][2], para_Ex_Pose[0][3],
-    // para_Ex_Pose[0][4], para_Ex_Pose[0][5], para_Ex_Pose[0][6];
     vertexExt->SetParameters(pose);
     problem.AddVertex(vertexExt);
     pose_dim += vertexExt->LocalDimension();
@@ -579,8 +573,6 @@ void Estimator::MargNewFrame() {
     Eigen::VectorXd pose(7);
     Quaterniond q_init(Rs[i]);
     pose << Ps[i][0], Ps[i][1], Ps[i][2], q_init.x(), q_init.y(), q_init.z(), q_init.w();
-    // pose << para_Pose[i][0], para_Pose[i][1], para_Pose[i][2], para_Pose[i][3], para_Pose[i][4],
-    // para_Pose[i][5], para_Pose[i][6];
     vertexCam->SetParameters(pose);
     vertexCams_vec.push_back(vertexCam);
     problem.AddVertex(vertexCam);
@@ -794,8 +786,9 @@ void Estimator::ProblemSolve() {
 
   if (ESTIMATE_EXTRINSIC) {
     VecX vExterCali = vertexExt->Parameters();
-    rigid_ic_ = Sophus::SE3d(Eigen::Quaterniond(vExterCali[6], vExterCali[3], vExterCali[4], vExterCali[5]),
-                            Eigen::Vector3d(vExterCali[0], vExterCali[1], vExterCali[2]));
+    rigid_ic_ =
+        Sophus::SE3d(Eigen::Quaterniond(vExterCali[6], vExterCali[3], vExterCali[4], vExterCali[5]),
+                     Eigen::Vector3d(vExterCali[0], vExterCali[1], vExterCali[2]));
     vPic[0] << vExterCali[0], vExterCali[1], vExterCali[2], vExterCali[3], vExterCali[4],
         vExterCali[5], vExterCali[6];
   }
@@ -827,9 +820,9 @@ void Estimator::BackendOptimization() {
 
 void Estimator::slideWindow() {
   if (marginalization_flag == MARGIN_OLD) {
-    double t_0 = Headers[0];
-    back_R0 = Rs[0];
-    back_P0 = Ps[0];
+    int64_t t_0 = Headers[0];
+    Eigen::Matrix3d back_R0 = Rs[0];
+    Eigen::Vector3d back_P0 = Ps[0];
     if (frame_count == feature::WINDOW_SIZE) {
       for (int i = 0; i < feature::WINDOW_SIZE; i++) {
         Rs[i].swap(Rs[i + 1]);
@@ -859,12 +852,13 @@ void Estimator::slideWindow() {
       angular_velocity_buf[feature::WINDOW_SIZE].clear();
 
       if (true || solver_flag == INITIAL) {
-        std::map<double, backend::ImageFrame>::iterator it_0 = all_image_frame.find(t_0);
+        std::map<int64_t, backend::ImageFrame>::iterator it_0 = all_image_frame.find(t_0);
+        CHECK(it_0 != all_image_frame.end());
         delete it_0->second.pre_integration;
         it_0->second.pre_integration = nullptr;
 
-        for (map<double, backend::ImageFrame>::iterator it = all_image_frame.begin(); it != it_0;
-             ++it) {
+        for (std::map<int64_t, backend::ImageFrame>::iterator it = all_image_frame.begin();
+             it != it_0; ++it) {
           if (it->second.pre_integration) delete it->second.pre_integration;
           it->second.pre_integration = NULL;
         }
@@ -872,7 +866,7 @@ void Estimator::slideWindow() {
         all_image_frame.erase(all_image_frame.begin(), it_0);
         all_image_frame.erase(t_0);
       }
-      slideWindowOld();
+      slideWindowOld(back_R0, back_P0);
     }
   } else {
     if (frame_count == feature::WINDOW_SIZE) {
@@ -910,21 +904,15 @@ void Estimator::slideWindow() {
 }
 
 // real marginalization is removed in solve_ceres()
-void Estimator::slideWindowNew() {
-  sum_of_front++;
-  f_manager.removeFront(frame_count);
-}
+void Estimator::slideWindowNew() { f_manager.removeFront(frame_count); }
 
 // real marginalization is removed in solve_ceres()
-void Estimator::slideWindowOld() {
-  sum_of_back++;
+void Estimator::slideWindowOld(const Eigen::Matrix3d& back_R0, const Eigen::Vector3d& back_P0) {
   if (solver_flag == NON_LINEAR) {
-    Matrix3d R0, R1;
-    Vector3d P0, P1;
-    R0 = back_R0 * rigid_ic_.so3().matrix();
-    R1 = Rs[0] * rigid_ic_.so3().matrix();
-    P0 = back_P0 + back_R0 * rigid_ic_.translation();
-    P1 = Ps[0] + Rs[0] * rigid_ic_.translation();
+    Eigen::Matrix3d R0 = back_R0 * rigid_ic_.so3().matrix();
+    Eigen::Matrix3d R1 = Rs[0] * rigid_ic_.so3().matrix();
+    Eigen::Vector3d P0 = back_P0 + back_R0 * rigid_ic_.translation();
+    Eigen::Vector3d P1 = Ps[0] + Rs[0] * rigid_ic_.translation();
     f_manager.RemoveBackShiftDepth(R0, P0, R1, P1);
   } else {
     f_manager.RemoveBack();

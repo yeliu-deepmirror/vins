@@ -39,12 +39,11 @@ System::~System() {
 bool System::PublishImageData(int64_t timestamp, cv::Mat& img, cv::Mat& depth) {
   double stamp_second = static_cast<double>(timestamp) * 1e-9;
   // detect unstable camera stream
-  //   -- that receive the image to late or early image
   if (stamp_second - current_time_ > 1.0 || stamp_second < current_time_) {
     return false;
   }
-  PublishImuData(stamp_second, latest_acc_, latest_gyr_);
 
+  PublishImuData(timestamp, estimator_.acc_0, estimator_.gyr_0);
   if (!depth.empty()) {
     CHECK_EQ(img.cols, depth.cols);
     CHECK_EQ(img.rows, depth.rows);
@@ -59,43 +58,44 @@ bool System::PublishImageData(int64_t timestamp, cv::Mat& img, cv::Mat& depth) {
   const auto& pixels = feature_tracker_.vCurPts;
   for (size_t j = 0; j < feature_ids.size(); j++) {
     if (feature_tracker_.vTrackCnt[j] < 2) continue;
-
+    // use -1 for depth to indicate that we have no good initial
     double depth_val = -1.0;
     if (!depth.empty()) {
       depth_val = depth.at<float>(pixels[j].y, pixels[j].x);
     }
-
-    // use -1 for depth to indicate that we have no good initial
     image[feature_ids[j]].emplace_back(0, Eigen::Vector3d(un_pts[j].x, un_pts[j].y, depth_val));
   }
 
-  estimator_.ProcessImage(image, stamp_second);
-
-  if (estimator_.solver_flag == Estimator::SolverFlag::NON_LINEAR) {
-    frame_positions_.push_back(estimator_.Ps[WINDOW_SIZE]);
-  }
+  estimator_.ProcessImage(image, timestamp);
 
   if (vins_config_.viz()) {
-    keyframe_history.push_back(estimator_.GetCurrentCameraPose());
     cv::Mat show_img = img;
     ShowTrack(&show_img);
     cv::imshow("IMAGE", show_img);
     cv::waitKey(1);
+  }
+
+  if (estimator_.solver_flag != Estimator::SolverFlag::NON_LINEAR) return false;
+
+  // update frame poses
+  for (int i = 0; i < WINDOW_SIZE + 1; i++) {
+    Eigen::Matrix3d rot = estimator_.Rs[i] * estimator_.rigid_ic_.so3().matrix();
+    Eigen::Vector3d trans =
+        estimator_.Rs[i] * estimator_.rigid_ic_.translation() + estimator_.Ps[i];
+    camera_poses_[estimator_.Headers[i]] = Sophus::SE3d(rot, trans);
   }
   return true;
 }
 
 void System::ShowTrack(cv::Mat* image) {
   CHECK(image != nullptr);
-
   if (image->channels() == 1) {
     cv::cvtColor(*image, *image, cv::COLOR_GRAY2BGR);
   }
-
-  for (unsigned int j = 0; j < feature_tracker_.vCurPts.size(); j++) {
+  const auto& pixels = feature_tracker_.vCurPts;
+  for (unsigned int j = 0; j < pixels.size(); j++) {
     double len = min(1.0, 1.0 * feature_tracker_.vTrackCnt[j] / WINDOW_SIZE);
-    cv::circle(*image, feature_tracker_.vCurPts[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len),
-               2);
+    cv::circle(*image, pixels[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len), 2);
   }
 }
 
@@ -103,26 +103,20 @@ bool System::PublishImuData(int64_t timestamp, const Eigen::Vector3d& acc,
                             const Eigen::Vector3d& gyr) {
   double stamp_second = static_cast<double>(timestamp) * 1e-9;
   if (stamp_second <= current_time_) {
-    cerr << "imu message in disorder!" << stamp_second << " " << current_time_ << endl;
+    LOG(ERROR) << "imu message in disorder!" << stamp_second << " " << current_time_;
     return false;
   }
-  if (current_time_ < 0) {
-    current_time_ = stamp_second;
-    return true;
-  }
-
+  if (current_time_ < 0) current_time_ = stamp_second;
   double dt = stamp_second - current_time_;
   current_time_ = stamp_second;
 
   estimator_.processIMU(dt, acc, gyr);
-  latest_acc_ = acc;
-  latest_gyr_ = gyr;
   return true;
 }
 
 void System::Draw() {
   // create pangolin window and plot the trajectory
-  pangolin::CreateWindowAndBind("Map Viewer", 1224, 768);
+  pangolin::CreateWindowAndBind("Vins Viewer", 1224, 768);
   glEnable(GL_DEPTH_TEST);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -146,174 +140,57 @@ void System::Draw() {
 
     d_cam.Activate(s_cam);
     glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-    glColor3f(0, 0, 1);
     pangolin::glDrawAxis(3);
 
-    // draw poses
+    // draw trajectory
     glColor3f(0, 0, 0);
     glLineWidth(2);
-    glBegin(GL_LINES);
-    int nPath_size = frame_positions_.size();
-    for (int i = 0; i < nPath_size - 1; ++i) {
-      glVertex3f(frame_positions_[i].x(), frame_positions_[i].y(), frame_positions_[i].z());
-      glVertex3f(frame_positions_[i + 1].x(), frame_positions_[i + 1].y(), frame_positions_[i + 1].z());
+    glBegin(GL_LINE_STRIP);
+    for (auto& pose_iter : camera_poses_) {
+      auto& trans = pose_iter.second.translation();
+      glVertex3f(trans(0), trans(1), trans(2));
     }
     glEnd();
 
-    if (menuShowKeyFrames) {
-      nPath_size = keyframe_history.size();
-      for (int i = 0; i < nPath_size - 1; i = i + 5) {
-        DrawKeyframe(keyframe_history[i]);
-      }
-    }
-
     // points
+    glPointSize(5);
+    glBegin(GL_POINTS);
     if (estimator_.solver_flag == Estimator::SolverFlag::NON_LINEAR) {
-      glPointSize(5);
-      glBegin(GL_POINTS);
+      glColor3f(1, 0, 0);
       for (int i = 0; i < WINDOW_SIZE + 1; ++i) {
-        Vector3d p_wi = estimator_.Ps[i];
-        glColor3f(1, 0, 0);
+        Eigen::Vector3d& p_wi = estimator_.Ps[i];
         glVertex3d(p_wi[0], p_wi[1], p_wi[2]);
       }
-      glEnd();
     }
 
-    // points
     if (menuShowMarPoints) {
-      glPointSize(3);
-      glBegin(GL_POINTS);
       glColor3f(0, 0, 0);
       int margalized_size = estimator_.margin_cloud_cloud.size();
       for (int i = 0; i < margalized_size - 1; i++) {
-        for (Vec3 p_wi : estimator_.margin_cloud_cloud[i]) {
+        for (auto& p_wi : estimator_.margin_cloud_cloud[i]) {
           glVertex3d(p_wi[0], p_wi[1], p_wi[2]);
         }
       }
-      glEnd();
-
-      glPointSize(5);
-      glBegin(GL_POINTS);
       glColor3f(1, 0, 0);
       if (margalized_size > 0) {
-        for (Vec3 p_wi : estimator_.margin_cloud_cloud[margalized_size - 1]) {
+        for (auto& p_wi : estimator_.margin_cloud_cloud[margalized_size - 1]) {
           glVertex3d(p_wi[0], p_wi[1], p_wi[2]);
         }
       }
-      glEnd();
     }
 
     // map points currently seen
     if (menuShowCurPoints) {
-      glPointSize(5);
-      glBegin(GL_POINTS);
       glColor3f(0, 1, 0);
       for (Vec3 p_wi : estimator_.point_cloud) {
         glVertex3d(p_wi[0], p_wi[1], p_wi[2]);
       }
-      glEnd();
     }
+    glEnd();
 
     pangolin::FinishFrame();
     usleep(50000);  // sleep 5 ms
   }
-}
-
-void System::GetOpenGLCameraMatrix(Eigen::Matrix3d matrix_t, Eigen::Vector3d pVector_t,
-                                   pangolin::OpenGlMatrix& M, bool if_inv) {
-  Eigen::Matrix3d matrix;
-  Eigen::Vector3d pVector;
-
-  // std::cout << matrix_t << std::endl;
-  if (if_inv) {
-    matrix = matrix_t.transpose();
-    pVector = -matrix * pVector_t;
-  } else {
-    matrix = matrix_t;
-    pVector = pVector_t;
-  }
-
-  M.m[0] = matrix(0, 0);
-  M.m[1] = matrix(1, 0);
-  M.m[2] = matrix(2, 0);
-  M.m[3] = 0.0;
-  M.m[4] = matrix(0, 1);
-  M.m[5] = matrix(1, 1);
-  M.m[6] = matrix(2, 1);
-  M.m[7] = 0.0;
-  M.m[8] = matrix(0, 2);
-  M.m[9] = matrix(1, 2);
-  M.m[10] = matrix(2, 2);
-  M.m[11] = 0.0;
-  M.m[12] = pVector(0);
-  M.m[13] = pVector(1);
-  M.m[14] = pVector(2);
-  M.m[15] = 1.0;
-}
-
-void System::GetOpenGLMatrixCamera(pangolin::OpenGlMatrix& M, Eigen::Matrix<double, 3, 4> Twc) {
-  M.m[0] = Twc(0, 0);
-  M.m[1] = Twc(1, 0);
-  M.m[2] = Twc(2, 0);
-  M.m[3] = 0.0;
-  M.m[4] = Twc(0, 1);
-  M.m[5] = Twc(1, 1);
-  M.m[6] = Twc(2, 1);
-  M.m[7] = 0.0;
-  M.m[8] = Twc(0, 2);
-  M.m[9] = Twc(1, 2);
-  M.m[10] = Twc(2, 2);
-  M.m[11] = 0.0;
-  M.m[12] = Twc(0, 3);
-  M.m[13] = Twc(1, 3);
-  M.m[14] = Twc(2, 3);
-  M.m[15] = 1.0;
-}
-
-void System::DrawKeyframe(Eigen::Matrix3d matrix_t, Eigen::Vector3d pVector_t) {
-  pangolin::OpenGlMatrix currentT;
-  GetOpenGLCameraMatrix(matrix_t, pVector_t, currentT, false);
-
-  glPushMatrix();
-  glMultMatrixd(currentT.m);
-  DrawCamera();
-  glPopMatrix();
-}
-
-void System::DrawKeyframe(Eigen::Matrix<double, 3, 4> Twc) {
-  pangolin::OpenGlMatrix currentT;
-  GetOpenGLMatrixCamera(currentT, Twc);
-
-  glPushMatrix();
-  glMultMatrixd(currentT.m);
-  DrawCamera();
-  glPopMatrix();
-}
-
-void System::DrawCamera() {
-  const float w = mCameraSize;
-  const float h = w * 0.75;
-  const float z = w * 0.6;
-  glLineWidth(mCameraLineWidth);
-  glColor3f(0.0f, 1.0f, 0.0f);
-  glBegin(GL_LINES);
-  glVertex3f(0, 0, 0);
-  glVertex3f(w, h, z);
-  glVertex3f(0, 0, 0);
-  glVertex3f(w, -h, z);
-  glVertex3f(0, 0, 0);
-  glVertex3f(-w, -h, z);
-  glVertex3f(0, 0, 0);
-  glVertex3f(-w, h, z);
-  glVertex3f(w, h, z);
-  glVertex3f(w, -h, z);
-  glVertex3f(-w, h, z);
-  glVertex3f(-w, -h, z);
-  glVertex3f(-w, h, z);
-  glVertex3f(w, h, z);
-  glVertex3f(-w, -h, z);
-  glVertex3f(w, -h, z);
-  glEnd();
 }
 
 }  // namespace vins

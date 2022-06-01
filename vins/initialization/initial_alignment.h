@@ -16,12 +16,12 @@ class ImageFrame {
 
   ImageFrame(){};
   ImageFrame(const std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>>& _points,
-             double _t)
+             int64_t _t)
       : t{_t}, is_key_frame{false} {
     points = _points;
   };
   std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>> points;
-  double t;
+  int64_t t;
   Eigen::Matrix3d R;
   Eigen::Vector3d T;
   IntegrationBase* pre_integration;
@@ -29,7 +29,7 @@ class ImageFrame {
 };
 
 bool VisualIMUAlignment(const Eigen::Vector3d& trans_ic,
-                        std::map<double, ImageFrame>& all_image_frame, Eigen::Vector3d* Bgs,
+                        std::map<int64_t, ImageFrame>& all_image_frame, Eigen::Vector3d* Bgs,
                         Eigen::Vector3d& g, Eigen::VectorXd& x);
 
 }  // namespace backend

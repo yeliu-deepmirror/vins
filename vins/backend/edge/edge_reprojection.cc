@@ -126,7 +126,7 @@ void EdgeReprojection::ComputeJacobians() {
 EdgeReprojectionXYZ::EdgeReprojectionXYZ(const Eigen::Vector3d& world_pt,
                                          const std::vector<std::shared_ptr<Vertex>>& vertices)
     : Edge(2, 2, vertices, std::vector<VertexEdgeTypes>{V_POINT_XYZ, V_CAMERA_POSE}),
-    pt_obs_(world_pt) {}
+      pt_obs_(world_pt) {}
 
 void EdgeReprojectionXYZ::ComputeResidual() {
   Eigen::Vector3d pt_w = vertices_[0]->Parameters();

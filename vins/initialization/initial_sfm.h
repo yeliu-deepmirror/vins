@@ -2,9 +2,9 @@
 
 #include <ceres/ceres.h>
 #include <ceres/rotation.h>
+#include <Eigen/Dense>
 #include <cstdlib>
 #include <deque>
-#include <Eigen/Dense>
 #include <iostream>
 #include <map>
 #include <opencv2/core/eigen.hpp>

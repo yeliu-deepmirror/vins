@@ -3,14 +3,12 @@
 namespace vins {
 namespace backend {
 
-void solveGyroscopeBias(map<double, ImageFrame>& all_image_frame, Eigen::Vector3d* Bgs) {
-  Eigen::Matrix3d A;
-  Eigen::Vector3d b;
+void solveGyroscopeBias(std::map<int64_t, ImageFrame>& all_image_frame, Eigen::Vector3d* Bgs) {
+  Eigen::Matrix3d A = Eigen::Matrix3d::Zero();
+  Eigen::Vector3d b = Eigen::Vector3d::Zero();
   Eigen::Vector3d delta_bg;
-  A.setZero();
-  b.setZero();
-  map<double, ImageFrame>::iterator frame_i;
-  map<double, ImageFrame>::iterator frame_j;
+  std::map<int64_t, ImageFrame>::iterator frame_i;
+  std::map<int64_t, ImageFrame>::iterator frame_j;
   for (frame_i = all_image_frame.begin(); next(frame_i) != all_image_frame.end(); frame_i++) {
     frame_j = next(frame_i);
     Eigen::MatrixXd tmp_A(3, 3);
@@ -46,7 +44,7 @@ MatrixXd TangentBasis(Vector3d& g0) {
   return bc;
 }
 
-void RefineGravity(const Eigen::Vector3d& trans_ic, map<double, ImageFrame>& all_image_frame,
+void RefineGravity(const Eigen::Vector3d& trans_ic, map<int64_t, ImageFrame>& all_image_frame,
                    Vector3d& g, VectorXd& x) {
   Vector3d g0 = g.normalized() * GRAVITY_NORM;
   Vector3d lx, ly;
@@ -59,8 +57,8 @@ void RefineGravity(const Eigen::Vector3d& trans_ic, map<double, ImageFrame>& all
   VectorXd b{n_state};
   b.setZero();
 
-  map<double, ImageFrame>::iterator frame_i;
-  map<double, ImageFrame>::iterator frame_j;
+  map<int64_t, ImageFrame>::iterator frame_i;
+  map<int64_t, ImageFrame>::iterator frame_j;
   for (int k = 0; k < 4; k++) {
     MatrixXd lxly(3, 2);
     lxly = TangentBasis(g0);
@@ -115,7 +113,7 @@ void RefineGravity(const Eigen::Vector3d& trans_ic, map<double, ImageFrame>& all
   g = g0;
 }
 
-bool LinearAlignment(const Eigen::Vector3d& trans_ic, map<double, ImageFrame>& all_image_frame,
+bool LinearAlignment(const Eigen::Vector3d& trans_ic, map<int64_t, ImageFrame>& all_image_frame,
                      Vector3d& g, VectorXd& x) {
   int all_frame_count = all_image_frame.size();
   int n_state = all_frame_count * 3 + 3 + 1;
@@ -125,8 +123,8 @@ bool LinearAlignment(const Eigen::Vector3d& trans_ic, map<double, ImageFrame>& a
   VectorXd b{n_state};
   b.setZero();
 
-  map<double, ImageFrame>::iterator frame_i;
-  map<double, ImageFrame>::iterator frame_j;
+  map<int64_t, ImageFrame>::iterator frame_i;
+  map<int64_t, ImageFrame>::iterator frame_j;
   int i = 0;
   for (frame_i = all_image_frame.begin(); next(frame_i) != all_image_frame.end(); frame_i++, i++) {
     frame_j = next(frame_i);
@@ -184,8 +182,9 @@ bool LinearAlignment(const Eigen::Vector3d& trans_ic, map<double, ImageFrame>& a
     return true;
 }
 
-bool VisualIMUAlignment(const Eigen::Vector3d& trans_ic, map<double, ImageFrame>& all_image_frame,
-                        Vector3d* Bgs, Vector3d& g, VectorXd& x) {
+bool VisualIMUAlignment(const Eigen::Vector3d& trans_ic,
+                        std::map<int64_t, ImageFrame>& all_image_frame, Eigen::Vector3d* Bgs,
+                        Eigen::Vector3d& g, Eigen::VectorXd& x) {
   solveGyroscopeBias(all_image_frame, Bgs);
   return LinearAlignment(trans_ic, all_image_frame, g, x);
 }

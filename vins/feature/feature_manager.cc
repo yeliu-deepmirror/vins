@@ -118,8 +118,7 @@ Eigen::VectorXd FeatureManager::GetInverseDepthVector() {
   return dep_vec;
 }
 
-void FeatureManager::triangulate(Eigen::Vector3d Ps[], Eigen::Vector3d tic,
-                                 Eigen::Matrix3d ric) {
+void FeatureManager::triangulate(Eigen::Vector3d Ps[], Eigen::Vector3d tic, Eigen::Matrix3d ric) {
   for (auto& it_per_id : feature) {
     it_per_id.used_num = it_per_id.feature_per_frame.size();
     if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2)) continue;

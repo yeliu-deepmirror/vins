@@ -1,11 +1,11 @@
 #ifndef FEATURE_MANAGER_H
 #define FEATURE_MANAGER_H
 
+#include <iostream>
 #include <list>
 #include <map>
 #include <numeric>
 #include <vector>
-#include <iostream>
 
 using namespace std;
 

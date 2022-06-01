@@ -6,47 +6,50 @@ namespace feature {
 
 namespace {
 
-cv::Point2f UndistortPointFast(const cv::Point2f& point_xy, const Eigen::VectorXd& undist_param) {
+inline cv::Point2f UndistortPointFast(const cv::Point2f& point_xy,
+                                      const Eigen::VectorXd& undist_param) {
   if (undist_param.squaredNorm() == 0) {
     return point_xy;
   }
   // https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp
   // compensate distortion iteratively (by default opencv process 5 iterations)
-  double x = point_xy.x;
-  double y = point_xy.y;
+  float x = point_xy.x;
+  float y = point_xy.y;
   for (int j = 0; j < 5; j++) {
-    double x_sqr = x * x;
-    double y_sqr = y * y;
-    double xy = x * y;
+    float x_sqr = x * x;
+    float y_sqr = y * y;
+    float xy = x * y;
 
-    double r_sqr = x_sqr + y_sqr;
-    double icdist =
+    float r_sqr = x_sqr + y_sqr;
+    float icdist =
         1.0 / (1 + ((undist_param(4) * r_sqr + undist_param(1)) * r_sqr + undist_param(0)) * r_sqr);
     if (icdist < 0) {  // test: undistortPoints.regression_14583
       x = point_xy.x;
       y = point_xy.y;
       break;
     }
-    double delta_x = 2 * undist_param(2) * xy + undist_param(3) * (r_sqr + 2 * x_sqr);
-    double delta_y = undist_param(2) * (r_sqr + 2 * y_sqr) + 2 * undist_param(3) * xy;
+    float delta_x = 2 * undist_param(2) * xy + undist_param(3) * (r_sqr + 2 * x_sqr);
+    float delta_y = undist_param(2) * (r_sqr + 2 * y_sqr) + 2 * undist_param(3) * xy;
     x = (point_xy.x - delta_x) * icdist;
     y = (point_xy.y - delta_y) * icdist;
   }
   return cv::Point2f(x, y);
 }
 
-void ReduceVector(vector<cv::Point2f>& v, vector<uchar> status) {
+template <typename Type>
+inline void ReduceVector(std::vector<Type>& v, const std::vector<uchar>& status) {
   int j = 0;
-  for (int i = 0; i < int(v.size()); i++)
+  for (size_t i = 0; i < v.size(); i++)
     if (status[i]) v[j++] = v[i];
   v.resize(j);
 }
 
-void ReduceVector(vector<int>& v, vector<uchar> status) {
-  int j = 0;
-  for (int i = 0; i < int(v.size()); i++)
-    if (status[i]) v[j++] = v[i];
-  v.resize(j);
+template <typename T>
+inline std::vector<size_t> ArgSortVector(const std::vector<T>& v) {
+  std::vector<size_t> idx(v.size());
+  std::iota(idx.begin(), idx.end(), 0);
+  std::sort(idx.begin(), idx.end(), [&v](size_t i1, size_t i2) { return v[i1] > v[i2]; });
+  return idx;
 }
 
 }  // namespace
@@ -57,14 +60,6 @@ bool FeatureTracker::InBorder(const cv::Point2f& pt) {
   int img_x = cvRound(pt.x);
   int img_y = cvRound(pt.y);
   return 2 <= img_x && img_x < intrinsic_.col_ - 2 && 2 <= img_y && img_y < intrinsic_.row_ - 2;
-}
-
-template <typename T>
-std::vector<size_t> ArgSortVector(const std::vector<T>& v) {
-  std::vector<size_t> idx(v.size());
-  std::iota(idx.begin(), idx.end(), 0);
-  std::sort(idx.begin(), idx.end(), [&v](size_t i1, size_t i2) { return v[i1] > v[i2]; });
-  return idx;
 }
 
 FeatureTracker::FeatureTracker(bool equalize, int max_num_pts, int min_pt_distance)
@@ -81,8 +76,6 @@ void FeatureTracker::GetMaskAndFilterPoints(cv::Mat& mMask) {
   vFeatureIds.clear();
   vTrackCnt.clear();
 
-  // BASTIAN_M : update a new version to sort and filter the version. use about half the time of the
-  // original.
   for (auto& it : ArgSortVector(vTrackCnt_old)) {
     cv::Point2f& pt = vForwPts_old[it];
     if (mMask.at<uchar>(pt) == 255) {
@@ -123,8 +116,8 @@ void FeatureTracker::ReadImage(const cv::Mat& _img, double _cur_time, bool bPubl
   vForwPts.clear();
 
   if (vCurPts.size() > 0) {
-    vector<uchar> status;
-    vector<float> err;
+    std::vector<uchar> status;
+    std::vector<float> err;
     cv::calcOpticalFlowPyrLK(mCurImg, mForwImg, vCurPts, vForwPts, status, err, cv::Size(21, 21),
                              3);
 
@@ -164,10 +157,13 @@ void FeatureTracker::RejectWithFundamentalMatrix() {
     TicToc t_f;
     std::vector<cv::Point2f> un_vCurPts(vCurPts.size()), un_vForwPts(vForwPts.size());
     for (unsigned int i = 0; i < vCurPts.size(); i++) {
-      cv::Point2f undist_pt = UndistortPointFast(NormalizePoint(vCurPts[i]), intrinsic_.undist_param_);
-      un_vCurPts[i] = cv::Point2f(600 * undist_pt.x + intrinsic_.col_ / 2.0, 600 * undist_pt.y + intrinsic_.row_ / 2.0);
+      cv::Point2f undist_pt =
+          UndistortPointFast(NormalizePoint(vCurPts[i]), intrinsic_.undist_param_);
+      un_vCurPts[i] = cv::Point2f(600 * undist_pt.x + intrinsic_.col_ / 2.0,
+                                  600 * undist_pt.y + intrinsic_.row_ / 2.0);
       undist_pt = UndistortPointFast(NormalizePoint(vForwPts[i]), intrinsic_.undist_param_);
-      un_vForwPts[i] = cv::Point2f(600 * undist_pt.x + intrinsic_.col_ / 2.0, 600 * undist_pt.y + intrinsic_.row_ / 2.0);
+      un_vForwPts[i] = cv::Point2f(600 * undist_pt.x + intrinsic_.col_ / 2.0,
+                                   600 * undist_pt.y + intrinsic_.row_ / 2.0);
     }
 
     vector<uchar> status;
@@ -197,36 +193,11 @@ void FeatureTracker::UpdateIdMono() {
 
 void FeatureTracker::UndistortedPoints() {
   vCurUndistortPts.clear();
-  std::map<int, cv::Point2f> mapCurUndistortPts;
-
   for (unsigned int i = 0; i < vCurPts.size(); i++) {
-    cv::Point2f undist_pt = UndistortPointFast(NormalizePoint(vCurPts[i]), intrinsic_.undist_param_);
-    vCurUndistortPts.push_back(undist_pt);
-    mapCurUndistortPts.insert(make_pair(vFeatureIds[i], undist_pt));
+    cv::Point2f undist_pt =
+        UndistortPointFast(NormalizePoint(vCurPts[i]), intrinsic_.undist_param_);
+    vCurUndistortPts.emplace_back(std::move(undist_pt));
   }
-  // caculate points velocity
-  if (!mapPrevUndistortPts.empty()) {
-    double dt = cur_time - prev_time;
-    vFeatureVelocity.clear();
-    for (unsigned int i = 0; i < vCurUndistortPts.size(); i++) {
-      if (vFeatureIds[i] != -1) {
-        std::map<int, cv::Point2f>::iterator it;
-        it = mapPrevUndistortPts.find(vFeatureIds[i]);
-        if (it != mapPrevUndistortPts.end()) {
-          double v_x = (vCurUndistortPts[i].x - it->second.x) / dt;
-          double v_y = (vCurUndistortPts[i].y - it->second.y) / dt;
-          vFeatureVelocity.push_back(cv::Point2f(v_x, v_y));
-        } else {
-          vFeatureVelocity.push_back(cv::Point2f(0, 0));
-        }
-      } else {
-        vFeatureVelocity.push_back(cv::Point2f(0, 0));
-      }
-    }
-  } else {
-    vFeatureVelocity = std::vector<cv::Point2f>(vCurPts.size(), cv::Point2f(0, 0));
-  }
-  mapPrevUndistortPts = mapCurUndistortPts;
 }
 
 }  // namespace feature

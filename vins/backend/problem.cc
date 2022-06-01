@@ -17,7 +17,7 @@ bool IsLandmarkVertex(const std::shared_ptr<vins::backend::Vertex>& v) {
   VertexEdgeTypes type = v->TypeId();
   return type == V_POINT_XYZ || type == V_INVERSE_DEPTH;
 }
-}
+}  // namespace
 
 Problem::Problem(ProblemType problem_type) : problem_type_(problem_type) {}
 

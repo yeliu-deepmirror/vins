@@ -36,7 +36,8 @@ System::~System() {
   estimator_.ClearState();
 }
 
-bool System::PublishImageData(double stamp_second, cv::Mat& img, cv::Mat& depth) {
+bool System::PublishImageData(int64_t timestamp, cv::Mat& img, cv::Mat& depth) {
+  double stamp_second = static_cast<double>(timestamp) * 1e-9;
   // detect unstable camera stream
   //   -- that receive the image to late or early image
   if (stamp_second - current_time_ > 1.0 || stamp_second < current_time_) {
@@ -98,8 +99,9 @@ void System::ShowTrack(cv::Mat* image) {
   }
 }
 
-bool System::PublishImuData(double stamp_second, const Eigen::Vector3d& acc,
+bool System::PublishImuData(int64_t timestamp, const Eigen::Vector3d& acc,
                             const Eigen::Vector3d& gyr) {
+  double stamp_second = static_cast<double>(timestamp) * 1e-9;
   if (stamp_second <= current_time_) {
     cerr << "imu message in disorder!" << stamp_second << " " << current_time_ << endl;
     return false;

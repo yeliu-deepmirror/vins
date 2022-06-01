@@ -35,7 +35,7 @@ class System {
   Eigen::Vector3d latest_acc_;
   Eigen::Vector3d latest_gyr_;
 
-  std::vector<Eigen::Vector3d> vPath_to_draw;  // history path of body(IMU)
+  std::vector<Eigen::Vector3d> frame_positions_;  // history path of body(IMU)
 
   std::vector<double> corresponding_timestamps;
   std::vector<Eigen::Matrix<double, 3, 4>> keyframe_history;  // record all the past keyframes

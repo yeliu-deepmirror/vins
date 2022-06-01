@@ -70,17 +70,12 @@ bool System::PublishImageData(double stamp_second, cv::Mat& img, cv::Mat& depth)
 
   estimator_.ProcessImage(image, stamp_second);
 
+  if (estimator_.solver_flag == Estimator::SolverFlag::NON_LINEAR) {
+    frame_positions_.push_back(estimator_.Ps[WINDOW_SIZE]);
+  }
+
   if (vins_config_.viz()) {
-    if (estimator_.solver_flag == Estimator::SolverFlag::NON_LINEAR) {
-      Eigen::Vector3d p_wi;
-      Eigen::Quaterniond q_wi;
-      q_wi = Quaterniond(estimator_.Rs[WINDOW_SIZE]);
-      p_wi = estimator_.Ps[WINDOW_SIZE];
-
-      vPath_to_draw.push_back(p_wi);
-      keyframe_history.push_back(estimator_.GetCurrentCameraPose());
-    }
-
+    keyframe_history.push_back(estimator_.GetCurrentCameraPose());
     cv::Mat show_img = img;
     ShowTrack(&show_img);
     cv::imshow("IMAGE", show_img);
@@ -156,10 +151,10 @@ void System::Draw() {
     glColor3f(0, 0, 0);
     glLineWidth(2);
     glBegin(GL_LINES);
-    int nPath_size = vPath_to_draw.size();
+    int nPath_size = frame_positions_.size();
     for (int i = 0; i < nPath_size - 1; ++i) {
-      glVertex3f(vPath_to_draw[i].x(), vPath_to_draw[i].y(), vPath_to_draw[i].z());
-      glVertex3f(vPath_to_draw[i + 1].x(), vPath_to_draw[i + 1].y(), vPath_to_draw[i + 1].z());
+      glVertex3f(frame_positions_[i].x(), frame_positions_[i].y(), frame_positions_[i].z());
+      glVertex3f(frame_positions_[i + 1].x(), frame_positions_[i + 1].y(), frame_positions_[i + 1].z());
     }
     glEnd();
 

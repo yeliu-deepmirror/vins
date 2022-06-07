@@ -7,15 +7,9 @@
 #include "vins/initialization/initial_sfm.h"
 #include "vins/initialization/solve_5pts.h"
 
-#include "vins/backend/common/utility.h"
-#include "vins/backend/problem.h"
-#include "vins/backend/vertex/vertex_inverse_depth.h"
-#include "vins/backend/vertex/vertex_pose.h"
-#include "vins/backend/vertex/vertex_speedbias.h"
-
-#include "vins/backend/edge/edge_imu.h"
-#include "vins/backend/edge/edge_reprojection.h"
-
+#include "vins/backend/common/cost_function.h"
+#include "vins/backend/common/loss_function.h"
+#include "vins/backend/common/tic_toc.h"
 #include "vins/parameters.h"
 
 #include <opencv2/core/eigen.hpp>
@@ -60,14 +54,25 @@ class Estimator {
     Eigen::Matrix3d Rs[(feature::WINDOW_SIZE + 1)];
     Eigen::Vector3d Bas[(feature::WINDOW_SIZE + 1)];
     Eigen::Vector3d Bgs[(feature::WINDOW_SIZE + 1)];
+
+    Eigen::VectorXd bprior;
+    Eigen::VectorXd errprior;
+    std::vector<double> depths;
   };
   double ComputeCurrentLoss();
   ProblemMeta MakeProblem(int landmark_size);
   bool SolveProblem(const ProblemMeta& problem_meta, double lambda, Eigen::VectorXd* delta_x);
   States UpdateStates(const Eigen::VectorXd& delta_x);
+  void RollbackStates(const States& states);
+
+  double ComputeInitialLambda(const ProblemMeta& problem);
+  bool IsGoodStep(const ProblemMeta& problem, const Eigen::VectorXd& delta_x, double last_lost,
+                  double* lambda, double* ni);
+  void OptimizeSlideWindow(int max_num_iterations);
+
   void BackendOptimization();
 
-  void ProblemSolve();
+  // for marginalization
   void MargOldFrame();
   void MargNewFrame();
 

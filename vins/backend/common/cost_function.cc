@@ -1,68 +1,78 @@
-#include "vins/backend/edge/edge_imu.h"
-#include "vins/backend/vertex/vertex_pose.h"
-#include "vins/backend/vertex/vertex_speedbias.h"
+#include "vins/backend/common/cost_function.h"
 
 namespace vins {
 namespace backend {
-using Sophus::SO3d;
 
-Vec3 EdgeImu::gravity_ = Vec3(0, 0, 9.8);
+Eigen::Vector2d ComputeVisualResidual(const Eigen::Vector3d& t_i_c, const Eigen::Matrix3d& r_i_c,
+                                      const Eigen::Vector3d& t_w_i1, const Eigen::Matrix3d& r_w_i1,
+                                      const Eigen::Vector3d& t_w_i2, const Eigen::Matrix3d& r_w_i2,
+                                      double inv_dep_1, const Eigen::Vector3d& pt1,
+                                      const Eigen::Vector3d& pt2) {
+  Eigen::Vector3d pt_camera_1 = pt1 / inv_dep_1;
+  Eigen::Vector3d pt_w = r_w_i1 * (r_i_c * pt_camera_1 + t_i_c) + t_w_i1;
+  Eigen::Vector3d pt_imu_2 = r_w_i2.transpose() * (pt_w - t_w_i2);
+  Eigen::Vector3d pt_camera_2 = r_i_c.transpose() * (pt_imu_2 - t_i_c);
 
-void EdgeImu::ComputeResidual() {
-  VecX param_0 = vertices_[0]->Parameters();
-  Qd Qi(param_0[6], param_0[3], param_0[4], param_0[5]);
-  Vec3 Pi = param_0.head<3>();
-
-  VecX param_1 = vertices_[1]->Parameters();
-  Vec3 Vi = param_1.head<3>();
-  Vec3 Bai = param_1.segment(3, 3);
-  Vec3 Bgi = param_1.tail<3>();
-
-  VecX param_2 = vertices_[2]->Parameters();
-  Qd Qj(param_2[6], param_2[3], param_2[4], param_2[5]);
-  Vec3 Pj = param_2.head<3>();
-
-  VecX param_3 = vertices_[3]->Parameters();
-  Vec3 Vj = param_3.head<3>();
-  Vec3 Baj = param_3.segment(3, 3);
-  Vec3 Bgj = param_3.tail<3>();
-
-  residual_ = pre_integration_->evaluate(Pi, Qi, Vi, Bai, Bgi, Pj, Qj, Vj, Baj, Bgj);
-  SetInformation(pre_integration_->covariance.inverse());
+  double dep_2 = pt_camera_2.z();
+  return (pt_camera_2 / dep_2).head<2>() - pt2.head<2>();
 }
 
-// void ComputeImuResidual(
-//     const Eigen::Vector3d& t_w_i1, const Eigen::Quaterniond& r_w_i1,
-//     const Eigen::Vector3d& v1, const Eigen::Vector3d& ba1, const Eigen::Vector3d& bg1,
-//     const Eigen::Vector3d& t_w_i2, const Eigen::Quaterniond& r_w_i2,
-//     const Eigen::Vector3d& v2, const Eigen::Vector3d& ba2, const Eigen::Vector3d& bg2,
-//     IntegrationBase* pre_integration, Eigen::VectorXd* residual, Eigen::MatrixXd* information) {
-//   *residual_ = pre_integration->evaluate(
-//       t_w_i1, r_w_i1, v1, ba1, bg1, t_w_i2, r_w_i2, v2, ba2, bg2);
-//   *information = pre_integration_->covariance.inverse();
-// }
+void ComputeVisualJacobian(const Eigen::Vector3d& t_i_c, const Eigen::Matrix3d& r_i_c,
+                           const Eigen::Vector3d& t_w_i1, const Eigen::Matrix3d& r_w_i1,
+                           const Eigen::Vector3d& t_w_i2, const Eigen::Matrix3d& r_w_i2,
+                           double inv_dep_1, const Eigen::Vector3d& pt1, const Eigen::Vector3d& pt2,
+                           Eigen::MatrixXd* jaco_1, Eigen::MatrixXd* jaco_2,
+                           Eigen::MatrixXd* jaco_ex, Eigen::MatrixXd* jaco_pt,
+                           Eigen::VectorXd* residual) {
+  Eigen::Vector3d pt_camera_1 = pt1 / inv_dep_1;
+  Eigen::Vector3d pts_imu_1 = r_i_c * pt_camera_1 + t_i_c;
+  Eigen::Vector3d pt_w = r_w_i1 * pts_imu_1 + t_w_i1;
+  Eigen::Vector3d pt_imu_2 = r_w_i2.transpose() * (pt_w - t_w_i2);
+  Eigen::Vector3d pt_camera_2 = r_i_c.transpose() * (pt_imu_2 - t_i_c);
 
-void EdgeImu::ComputeJacobians() {
-  VecX param_0 = vertices_[0]->Parameters();
-  Qd Qi(param_0[6], param_0[3], param_0[4], param_0[5]);
-  Vec3 Pi = param_0.head<3>();
+  double inv_dep_2 = 1.0 / pt_camera_2.z();
+  double sqr_inv_dep_2 = inv_dep_2 * inv_dep_2;
 
-  VecX param_1 = vertices_[1]->Parameters();
-  Vec3 Vi = param_1.head<3>();
-  Vec3 Bai = param_1.segment(3, 3);
-  Vec3 Bgi = param_1.tail<3>();
+  if (residual != nullptr) {
+    *residual = (pt_camera_2 * inv_dep_2).head<2>() - pt2.head<2>();
+  }
 
-  VecX param_2 = vertices_[2]->Parameters();
-  Qd Qj(param_2[6], param_2[3], param_2[4], param_2[5]);
-  Vec3 Pj = param_2.head<3>();
+  Eigen::Matrix<double, 2, 3> reduce_matrix;
+  reduce_matrix << inv_dep_2, 0, -pt_camera_2(0) * sqr_inv_dep_2, 0, inv_dep_2,
+      -pt_camera_2(1) * sqr_inv_dep_2;
 
-  VecX param_3 = vertices_[3]->Parameters();
-  Vec3 Vj = param_3.head<3>();
-  Vec3 Baj = param_3.segment(3, 3);
-  Vec3 Bgj = param_3.tail<3>();
+  Eigen::Matrix3d tmp_1 = Sophus::SO3d::hat(pts_imu_1);
+  Eigen::Matrix3d tmp_2 = r_i_c.transpose() * r_w_i2.transpose();
 
-  ComputeImuJacobian(Pi, Qi, Vi, Bai, Bgi, Pj, Qj, Vj, Baj, Bgj, pre_integration_, &(jacobians_[0]),
-                     &(jacobians_[1]), &(jacobians_[2]), &(jacobians_[3]), nullptr);
+  if (jaco_1 != nullptr) {
+    Eigen::Matrix<double, 3, 6> jaco_t1;
+    jaco_t1.leftCols<3>() = tmp_2;
+    jaco_t1.rightCols<3>() = -tmp_2 * r_w_i1 * tmp_1;
+    *jaco_1 = reduce_matrix * jaco_t1;
+  }
+
+  if (jaco_2 != nullptr) {
+    Eigen::Matrix<double, 3, 6> jaco_t2;
+    jaco_t2.leftCols<3>() = -tmp_2;
+    jaco_t2.rightCols<3>() = r_i_c.transpose() * tmp_1;
+    *jaco_2 = reduce_matrix * jaco_t2;
+  }
+
+  if (jaco_pt != nullptr) {
+    *jaco_pt = reduce_matrix * tmp_2 * r_w_i1 * r_i_c * pt1 * -1.0 / (inv_dep_1 * inv_dep_1);
+  }
+
+  if (jaco_ex != nullptr) {
+    Eigen::Matrix<double, 3, 6> jaco_tex;
+    Eigen::Matrix3d tmp_3 = tmp_2 * r_w_i1;
+    jaco_tex.leftCols<3>() = tmp_3 - r_i_c.transpose();
+    Eigen::Matrix3d tmp_r = tmp_3 * r_i_c;
+    jaco_tex.rightCols<3>() =
+        -tmp_r * Utility::skewSymmetric(pt_camera_1) + Utility::skewSymmetric(tmp_r * pt_camera_1) +
+        Utility::skewSymmetric(r_i_c.transpose() *
+                               (r_w_i2.transpose() * (r_w_i1 * t_i_c + t_w_i1 - t_w_i2) - t_i_c));
+    *jaco_ex = reduce_matrix * jaco_tex;
+  }
 }
 
 void ComputeImuJacobian(const Eigen::Vector3d& t_w_i1, const Eigen::Quaterniond& r_w_i1,

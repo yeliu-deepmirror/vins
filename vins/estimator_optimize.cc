@@ -230,11 +230,36 @@ double Estimator::ComputeCurrentLoss() {
   return total_lost * 0.5;
 }
 
+void Estimator::RollbackStates(const Estimator::States& backup) {
+  if (ESTIMATE_EXTRINSIC) {
+    rigid_ic_ = backup.rigid_ic;
+  }
+  for (int i = 0; i < feature::WINDOW_SIZE + 1; i++) {
+    Ps[i] = backup.Ps[i];
+    Rs[i] = backup.Rs[i];
+    Vs[i] = backup.Vs[i];
+    Bas[i] = backup.Bas[i];
+    Bgs[i] = backup.Bgs[i];
+  }
+
+  bprior_ = backup.bprior;
+  errprior_ = backup.errprior;
+
+  int idx = 0;
+  for (auto& it_per_id : f_manager.feature) {
+    if (!it_per_id.Valid()) continue;
+    it_per_id.estimated_depth = backup.depths[idx++];
+  }
+}
+
 Estimator::States Estimator::UpdateStates(const Eigen::VectorXd& delta_x) {
   static int pose_dim = (feature::WINDOW_SIZE + 1) * 15 + 6;
   States backup;
   // back up the state
   backup.rigid_ic = rigid_ic_;
+  backup.bprior = bprior_;
+  backup.errprior = errprior_;
+  backup.depths.reserve(delta_x.rows() - pose_dim);
   for (int i = 0; i < feature::WINDOW_SIZE + 1; i++) {
     backup.Ps[i] = Ps[i];
     backup.Rs[i] = Rs[i];
@@ -246,30 +271,39 @@ Estimator::States Estimator::UpdateStates(const Eigen::VectorXd& delta_x) {
   // update extrinsic
   if (ESTIMATE_EXTRINSIC) {
     const Eigen::VectorXd& delta_pose = delta_x.segment(0, 6);
-    rigid_ic_.translation() += delta_pose.head<3>();
-    rigid_ic_.so3() = rigid_ic_.so3() * Sophus::SO3d::exp(delta_pose.tail<3>());
+    if (isfinite(delta_pose.squaredNorm())) {
+      rigid_ic_.translation() += delta_pose.head<3>();
+      rigid_ic_.so3() = rigid_ic_.so3() * Sophus::SO3d::exp(delta_pose.tail<3>());
+    }
   }
 
   // update pose
   for (int i = 0; i < feature::WINDOW_SIZE + 1; i++) {
     int idx = 6 + 15 * i;
     const Eigen::VectorXd& delta_pose = delta_x.segment(idx, 6);
-    Ps[i] += delta_pose.head<3>();
-    Rs[i] = Rs[i] * Sophus::SO3d::exp(delta_pose.tail<3>()).matrix();
+    if (isfinite(delta_pose.squaredNorm())) {
+      Ps[i] += delta_pose.head<3>();
+      Rs[i] = (Sophus::SO3d(Eigen::Quaterniond(Rs[i])) * Sophus::SO3d::exp(delta_pose.tail<3>()))
+                  .matrix();
+    }
 
     const Eigen::VectorXd& delta_sb = delta_x.segment(idx + 6, 9);
-    Vs[i] += delta_sb.segment(0, 3);
-    Bas[i] += delta_sb.segment(3, 3);
-    Bgs[i] += delta_sb.segment(6, 3);
+    if (isfinite(delta_sb.squaredNorm())) {
+      Vs[i] += delta_sb.segment(0, 3);
+      Bas[i] += delta_sb.segment(3, 3);
+      Bgs[i] += delta_sb.segment(6, 3);
+    }
   }
-
   // update inverse depth
   int idx = pose_dim;
   for (auto& it_per_id : f_manager.feature) {
     if (!it_per_id.Valid()) continue;
+    backup.depths.emplace_back(it_per_id.estimated_depth);
+    double delta = delta_x(idx++);
 
+    if (!isfinite(delta) || delta > 1e3) continue;
     double inv_depth = 1.0 / it_per_id.estimated_depth;
-    it_per_id.estimated_depth = 1.0 / (inv_depth + delta_x(idx++));
+    it_per_id.estimated_depth = 1.0 / (inv_depth + delta);
   }
 
   // update prior
@@ -282,7 +316,6 @@ Estimator::States Estimator::UpdateStates(const Eigen::VectorXd& delta_x) {
 
   return backup;
 }
-
 
 Estimator::ProblemMeta Estimator::MakeProblem(int landmark_size) {
   static int pose_dim = (feature::WINDOW_SIZE + 1) * 15 + 6;
@@ -315,7 +348,7 @@ Estimator::ProblemMeta Estimator::MakeProblem(int landmark_size) {
   // make the problem hessian
   Eigen::MatrixXd vis_information = project_sqrt_info_.transpose() * project_sqrt_info_;
 
-  int idx_feature = 0;
+  int idx_feature = pose_dim;
 
   Eigen::VectorXd residual;
   std::vector<Eigen::MatrixXd> jacobians(4);
@@ -354,8 +387,10 @@ Estimator::ProblemMeta Estimator::MakeProblem(int landmark_size) {
 
   // add prior
   int prior_dim = Hprior_.cols();
-  h_matrix.topLeftCorner(prior_dim, prior_dim) += Hprior_;
-  b_vec.head(prior_dim) += bprior_;
+  if (prior_dim > 0) {
+    h_matrix.topLeftCorner(prior_dim, prior_dim) += Hprior_;
+    b_vec.head(prior_dim) += bprior_;
+  }
 
   // update lm parameter
   if (errprior_.rows() > 0) total_lost += errprior_.norm();
@@ -364,7 +399,8 @@ Estimator::ProblemMeta Estimator::MakeProblem(int landmark_size) {
   return Estimator::ProblemMeta{total_lost, h_matrix, b_vec};
 }
 
-bool Estimator::SolveProblem(const Estimator::ProblemMeta& problem_meta, double lambda, Eigen::VectorXd* delta_x) {
+bool Estimator::SolveProblem(const Estimator::ProblemMeta& problem_meta, double lambda,
+                             Eigen::VectorXd* delta_x) {
   static int pose_dim = (feature::WINDOW_SIZE + 1) * 15 + 6;
   int marg_size = problem_meta.h_matrix.cols() - pose_dim;
   Eigen::MatrixXd Hmm = problem_meta.h_matrix.block(pose_dim, pose_dim, marg_size, marg_size);
@@ -397,176 +433,98 @@ bool Estimator::SolveProblem(const Estimator::ProblemMeta& problem_meta, double 
   delta_x->head(pose_dim) = delta_x_pp;
   delta_x->tail(marg_size) = delta_x_ll;
 
-  // solve failed, as the delta x is much too large
-  return delta_x->squaredNorm() < 1e6;
+  // return isfinite(delta_x->squaredNorm());
+  return true;
 }
 
-void Estimator::ProblemSolve() {
-  vInverseDepth = f_manager.GetInverseDepthVector();
-
-  // step1. build the problem
-  backend::Problem problem(backend::Problem::ProblemType::SLAM_PROBLEM);
-  vector<shared_ptr<backend::VertexPose>> vertexCams_vec;
-  vector<shared_ptr<backend::VertexSpeedBias>> vertexVB_vec;
-  int pose_dim = 0;
-
-  // add the externion parameters to the graph, body camera transformation, camera calibrations,
-  // etc. as it is frequency used, put it in the first place.
-  shared_ptr<backend::VertexPose> vertexExt(new backend::VertexPose());
-  {
-    Eigen::VectorXd pose = vPic[0];
-    vertexExt->SetParameters(pose);
-    if (!ESTIMATE_EXTRINSIC) {
-      vertexExt->SetFixed();
-    }
-    problem.AddVertex(vertexExt);
-    pose_dim += vertexExt->LocalDimension();
+double Estimator::ComputeInitialLambda(const Estimator::ProblemMeta& problem) {
+  double max_diagonal = 0;
+  for (int i = 0; i < problem.h_matrix.cols(); ++i) {
+    max_diagonal = std::max(fabs(problem.h_matrix(i, i)), max_diagonal);
   }
+  max_diagonal = std::min(5e10, max_diagonal);
+  return 1e-5 * max_diagonal;
+}
 
-  for (int i = 0; i < feature::WINDOW_SIZE + 1; i++) {
-    shared_ptr<backend::VertexPose> vertexCam(new backend::VertexPose());
-    Quaterniond q_init(Rs[i]);
-    Eigen::VectorXd pose(7);
-    pose << Ps[i][0], Ps[i][1], Ps[i][2], q_init.x(), q_init.y(), q_init.z(), q_init.w();
-    vertexCam->SetParameters(pose);
-    vertexCams_vec.push_back(vertexCam);
-    problem.AddVertex(vertexCam);
-    pose_dim += vertexCam->LocalDimension();
+bool Estimator::IsGoodStep(const Estimator::ProblemMeta& problem, const Eigen::VectorXd& delta_x,
+                           double last_lost, double* lambda, double* ni) {
+  double scale = 0.5 * delta_x.transpose() * ((*lambda) * delta_x + problem.b_vec) + 1e-6;
+  double current_loss = ComputeCurrentLoss();
 
-    shared_ptr<backend::VertexSpeedBias> vertexVB(new backend::VertexSpeedBias());
-    Eigen::VectorXd vb(9);
-    vb << Vs[i][0], Vs[i][1], Vs[i][2], Bas[i][0], Bas[i][1], Bas[i][2], Bgs[i][0], Bgs[i][1],
-        Bgs[i][2];
-    vertexVB->SetParameters(vb);
-    vertexVB_vec.push_back(vertexVB);
-    problem.AddVertex(vertexVB);
-    pose_dim += vertexVB->LocalDimension();
+  double rho = (last_lost - current_loss) / scale;
+  if (rho > 0 && isfinite(current_loss)) {
+    // last step was good
+    double alpha = 1. - std::pow((2 * rho - 1), 3);
+    alpha = std::min(alpha, 2. / 3.);
+    double scale_factor = (std::max)(1. / 3., alpha);
+    *lambda *= scale_factor;
+    *ni = 2;
+    return true;
+  } else {
+    *lambda *= *ni;
+    *ni *= 2;
+    return false;
   }
+}
 
-  // IMU
-  for (int i = 0; i < feature::WINDOW_SIZE; i++) {
-    int j = i + 1;
-    if (pre_integrations[j]->sum_dt > 10.0) continue;
+void Estimator::OptimizeSlideWindow(int max_num_iterations) {
+  TicToc t_solve;
 
-    std::vector<std::shared_ptr<backend::Vertex>> edge_vertex;
-    edge_vertex.push_back(vertexCams_vec[i]);
-    edge_vertex.push_back(vertexVB_vec[i]);
-    edge_vertex.push_back(vertexCams_vec[j]);
-    edge_vertex.push_back(vertexVB_vec[j]);
-
-    std::shared_ptr<backend::EdgeImu> imuEdge =
-        std::make_shared<backend::EdgeImu>(pre_integrations[j], edge_vertex);
-    problem.AddEdge(imuEdge);
-  }
-
-  // Visual Factor
-  std::vector<std::shared_ptr<backend::VertexInverseDepth>> vertexPt_vec;
-  int feature_index = 0;
-  // for all the features
+  int landmark_size = 0;
   for (auto& it_per_id : f_manager.feature) {
-    if (it_per_id.feature_per_frame.size() < 2) continue;
-    if (it_per_id.start_frame > feature::WINDOW_SIZE - 3) continue;
+    if (!it_per_id.Valid()) continue;
+    landmark_size++;
+  }
 
-    int imu_i = it_per_id.start_frame;
-    const Eigen::Vector3d& pts_i = it_per_id.feature_per_frame[0].point;
+  ProblemMeta problem = MakeProblem(landmark_size);
+  double lambda = ComputeInitialLambda(problem);
+  double ni = 2.0;
+  double last_cost = problem.total_lost;
 
-    std::shared_ptr<backend::VertexInverseDepth> verterxPoint(new backend::VertexInverseDepth());
-    verterxPoint->SetParameters(Eigen::Matrix<double, 1, 1>(vInverseDepth[feature_index++]));
-    problem.AddVertex(verterxPoint);
-    vertexPt_vec.push_back(verterxPoint);
-
-    for (size_t i = 1; i < it_per_id.feature_per_frame.size(); i++) {
-      const Eigen::Vector3d& pts_j = it_per_id.feature_per_frame[i].point;
-
-      std::vector<std::shared_ptr<backend::Vertex>> edge_vertex{
-          verterxPoint, vertexCams_vec[imu_i], vertexCams_vec[imu_i + i], vertexExt};
-
-      std::shared_ptr<backend::EdgeReprojection> edge =
-          std::make_shared<backend::EdgeReprojection>(pts_i, pts_j, edge_vertex);
-      edge->SetInformation(project_sqrt_info_.transpose() * project_sqrt_info_);
-      edge->SetLossFunction(loss_fcn_);
-      problem.AddEdge(edge);
+  if (verbose_) {
+    std::printf(" | %10s | %13s | %13s | %13s |\n", "Iteration", "Residual", "Norm Dx", "Lambda");
+    std::printf(" | %10d | %13.6f | %13.6f | %13.6f |\n", -1, last_cost, 0., lambda);
+  }
+  for (int iter = 0; iter < max_num_iterations; iter++) {
+    Eigen::VectorXd delta_x;
+    for (int lm_try = 0; lm_try < 8; lm_try++) {
+      // if (!SolveProblem(problem, lambda, &delta_x)) {
+      //   ComputeInitialLambda(problem);
+      //   continue;
+      // }
+      SolveProblem(problem, lambda, &delta_x);
+      States backup_state = UpdateStates(delta_x);
+      if (IsGoodStep(problem, delta_x, last_cost, &lambda, &ni)) {
+        break;
+      }
+      // it was a bad update roll back to previous state
+      RollbackStates(backup_state);
     }
+
+    problem = MakeProblem(landmark_size);
+    double dx_norm = delta_x.norm();
+
+    if (verbose_) {
+      std::printf(" | %10d | %13.6f | %13.6f | %13.6f |\n", iter, problem.total_lost, dx_norm,
+                  lambda);
+    }
+
+    // if the current residual improvement too small or maybe the linear system solved failed
+    if (last_cost - problem.total_lost < 1e-6) {
+      if (verbose_) {
+        std::cout << " [LM STOP] the residual reduce too less (< 1e-6)" << std::endl;
+      }
+      break;
+    }
+    last_cost = problem.total_lost;
   }
-
-  // prior process already got one
-  if (Hprior_.rows() > 0) {
-    problem.SetHessianPrior(Hprior_);  // tell the problem
-    problem.SetbPrior(bprior_);
-    problem.SetErrPrior(errprior_);
-    problem.SetJtPrior(Jprior_inv_);
-    problem.ExtendHessiansPriorSize(15);  // extand the hessian prior
+  if (verbose_) {
+    std::cout << " [LM FINISH]  problem solve cost: " << t_solve.toc() << " ms" << std::endl;
   }
-
-  // LOG(INFO) << "current residual : " << ComputeCurrentLoss();
-  problem.Solve(NUM_ITERATIONS, false);
-
-  // update bprior_,  Hprior_ do not need update
-  if (Hprior_.rows() > 0) {
-    bprior_ = problem.GetbPrior();
-    errprior_ = problem.GetErrPrior();
-  }
-
-  // BASTIAN_M : directly update the vectors, instead of call double 2 vector later.
-  // for the optimized variables : double2vector() of the original project
-  Eigen::Vector3d origin_R0 = backend::Utility::R2ypr(Rs[0]);
-  Eigen::Vector3d origin_P0 = Ps[0];
-
-  VecX vPoseCam0 = vertexCams_vec[0]->Parameters();
-  Eigen::Matrix3d mRotCam0 =
-      Quaterniond(vPoseCam0[6], vPoseCam0[3], vPoseCam0[4], vPoseCam0[5]).toRotationMatrix();
-  Vector3d origin_R00 = backend::Utility::R2ypr(mRotCam0);
-  double y_diff = origin_R0.x() - origin_R00.x();
-  // LOG(INFO) << y_diff;
-
-  // as the optimization may change the pose of all the frames
-  // if the first frames pose changed, this will lead to the system random walk behaviour
-  // to solve this, we calculate the difference between the frist frame pose before and
-  // after the optimization, then propragate it to all other window frames
-  //      the system has one rotation DOF and three poisition DOF
-  Matrix3d rot_diff = backend::Utility::ypr2R(Vector3d(y_diff, 0, 0));
-  if (abs(abs(origin_R0.y()) - 90) < 1.0 || abs(abs(origin_R00.y()) - 90) < 1.0) {
-    rot_diff = Rs[0] * mRotCam0.transpose();
-  }
-
-  // rot_diff = Matrix3d::Identity();
-  for (int i = 0; i <= feature::WINDOW_SIZE; i++) {
-    VecX vPoseCam_i = vertexCams_vec[i]->Parameters();
-    Rs[i] = rot_diff * Quaterniond(vPoseCam_i[6], vPoseCam_i[3], vPoseCam_i[4], vPoseCam_i[5])
-                           .normalized()
-                           .toRotationMatrix();
-
-    Ps[i] = rot_diff * Vector3d(vPoseCam_i[0] - vPoseCam0[0], vPoseCam_i[1] - vPoseCam0[1],
-                                vPoseCam_i[2] - vPoseCam0[2]) +
-            origin_P0;
-
-    VecX vSpeedBias_i = vertexVB_vec[i]->Parameters();
-    Vs[i] = rot_diff * Vector3d(vSpeedBias_i[0], vSpeedBias_i[1], vSpeedBias_i[2]);
-    Bas[i] = Vector3d(vSpeedBias_i[3], vSpeedBias_i[4], vSpeedBias_i[5]);
-    Bgs[i] = Vector3d(vSpeedBias_i[6], vSpeedBias_i[7], vSpeedBias_i[8]);
-  }
-
-  if (ESTIMATE_EXTRINSIC) {
-    VecX vExterCali = vertexExt->Parameters();
-    rigid_ic_ =
-        Sophus::SE3d(Eigen::Quaterniond(vExterCali[6], vExterCali[3], vExterCali[4], vExterCali[5]),
-                     Eigen::Vector3d(vExterCali[0], vExterCali[1], vExterCali[2]));
-    vPic[0] << vExterCali[0], vExterCali[1], vExterCali[2], vExterCali[3], vExterCali[4],
-        vExterCali[5], vExterCali[6];
-  }
-
-  int f_count = f_manager.GetFeatureCount();
-  VectorXd vInvDepToSet(f_count);
-  for (int i = 0; i < f_count; ++i) {
-    VecX f = vertexPt_vec[i]->Parameters();
-    vInvDepToSet(i) = f[0];
-    vInverseDepth(i) = f[0];
-  }
-  f_manager.SetDepth(vInvDepToSet);
 }
 
 void Estimator::BackendOptimization() {
-  ProblemSolve();
+  OptimizeSlideWindow(NUM_ITERATIONS);
 
   if (marginalization_flag == MARGIN_OLD) {
     MargOldFrame();

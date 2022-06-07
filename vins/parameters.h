@@ -17,10 +17,9 @@ const double INIT_DEPTH = 2.0;
 const double MIN_PARALLAX = 0.04;  // only threshold for new keyframe #0.02
 
 // from output
-const int ESTIMATE_EXTRINSIC = 0;
+const bool ESTIMATE_EXTRINSIC = 0;
 
 // backend
-const double TD = 0.0;
 const double SOLVER_TIME = 0.04;
 const int NUM_ITERATIONS = 8;
 const double TR = 0.0;

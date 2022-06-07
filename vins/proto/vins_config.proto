@@ -32,10 +32,10 @@ message VinsConfig {
   Extrinsic camera_to_imu = 12;
 
   // imu intrinisic
-  float acc_noise = 13;
-  float acc_random_walk = 14;
-  float gyr_noise = 15;
-  float gyr_random_walk = 16;
+  double acc_noise = 13;
+  double acc_random_walk = 14;
+  double gyr_noise = 15;
+  double gyr_random_walk = 16;
 
   bool verbose = 17;
   bool viz = 18;

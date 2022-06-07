@@ -54,12 +54,12 @@ inline std::vector<size_t> ArgSortVector(const std::vector<T>& v) {
 
 }  // namespace
 
-int FeatureTracker::n_id = 0;
+uint64_t FeatureTracker::n_id = 1;
 
 bool FeatureTracker::InBorder(const cv::Point2f& pt) {
   int img_x = cvRound(pt.x);
   int img_y = cvRound(pt.y);
-  return 2 <= img_x && img_x < intrinsic_.col_ - 2 && 2 <= img_y && img_y < intrinsic_.row_ - 2;
+  return 5 <= img_x && img_x < intrinsic_.col_ - 5 && 5 <= img_y && img_y < intrinsic_.row_ - 5;
 }
 
 FeatureTracker::FeatureTracker(bool equalize, int max_num_pts, int min_pt_distance)
@@ -69,7 +69,7 @@ void FeatureTracker::GetMaskAndFilterPoints(cv::Mat& mMask) {
   mMask = cv::Mat(intrinsic_.row_, intrinsic_.col_, CV_8UC1, cv::Scalar(255));
 
   std::vector<cv::Point2f> vForwPts_old = vForwPts;
-  std::vector<int> vFeatureIds_old = vFeatureIds;
+  std::vector<uint64_t> vFeatureIds_old = vFeatureIds;
   std::vector<int> vTrackCnt_old = vTrackCnt;
 
   vForwPts.clear();
@@ -90,7 +90,7 @@ void FeatureTracker::GetMaskAndFilterPoints(cv::Mat& mMask) {
 void FeatureTracker::AddPointsToTrack(std::vector<cv::Point2f>& vNewFeatures) {
   for (auto& p : vNewFeatures) {
     vForwPts.push_back(p);
-    vFeatureIds.push_back(-1);
+    vFeatureIds.push_back(0);
     vTrackCnt.push_back(1);
   }
 }
@@ -100,7 +100,7 @@ void FeatureTracker::ReadImage(const cv::Mat& _img, double _cur_time, bool bPubl
   cur_time = _cur_time;
 
   if (equalize_) {
-    static cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(3.0, cv::Size(4, 4));
+    static cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(3.0, cv::Size(8, 8));
     clahe->apply(_img, img);
   } else {
     img = _img;
@@ -176,18 +176,9 @@ void FeatureTracker::RejectWithFundamentalMatrix() {
   }
 }
 
-bool FeatureTracker::updateID(unsigned int i) {
-  if (i < vFeatureIds.size()) {
-    if (vFeatureIds[i] == -1) vFeatureIds[i] = n_id++;
-    return true;
-  } else {
-    return false;
-  }
-}
-
 void FeatureTracker::UpdateIdMono() {
   for (size_t i = 0; i < vFeatureIds.size(); i++) {
-    if (vFeatureIds[i] == -1) vFeatureIds[i] = n_id++;
+    if (vFeatureIds[i] == 0) vFeatureIds[i] = n_id++;
   }
 }
 

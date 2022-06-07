@@ -31,22 +31,11 @@ class Problem {
 
   bool AddVertex(std::shared_ptr<Vertex> vertex);
 
-  bool RemoveVertex(std::shared_ptr<Vertex> vertex);
-
   bool AddEdge(std::shared_ptr<Edge> edge);
-
-  bool RemoveEdge(std::shared_ptr<Edge> edge);
 
   void GetOutlierEdges(std::vector<std::shared_ptr<Edge>>& outlier_edges);
 
   bool Solve(int iterations = 10, bool verbose = true);
-
-  // marginalize a frame and the landmark "owned" by it (the landmarks whose host is this frame)
-  bool Marginalize(std::shared_ptr<Vertex> frameVertex,
-                   const std::vector<std::shared_ptr<Vertex>>& landmarkVerticies);
-
-  bool Marginalize(const std::shared_ptr<Vertex> frameVertex);
-  bool Marginalize(const std::vector<std::shared_ptr<Vertex>> frameVertex, int pose_dim);
 
   MatXX GetHessianPrior() { return H_prior_; }
   VecX GetbPrior() { return b_prior_; }
@@ -59,6 +48,9 @@ class Problem {
   void SetJtPrior(const MatXX& J) { Jt_prior_inv_ = J; }
 
   void ExtendHessiansPriorSize(int dim);
+
+  Eigen::MatrixXd H_marg_test;
+  Eigen::VectorXd b_marg_test;
 
  private:
   /// Solve SLAM problem
@@ -99,11 +91,6 @@ class Problem {
 
   /// initialize the Lambda parameter
   void ComputeLambdaInitLM();
-
-  /// Hessian add/substract  Lambda in the dinagal elements of Hessian
-  void AddLambdatoHessianLM();
-
-  void RemoveLambdaHessianLM();
 
   /// LM whether the lambda is good and how to update it
   bool IsGoodStepInLM();

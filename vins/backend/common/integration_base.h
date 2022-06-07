@@ -22,7 +22,7 @@ class IntegrationBase {
   IntegrationBase() = delete;
   IntegrationBase(const Eigen::Vector3d& _acc_0, const Eigen::Vector3d& _gyr_0,
                   const Eigen::Vector3d& _linearized_ba, const Eigen::Vector3d& _linearized_bg,
-                  const ImuIntrinsic& intrinsic = ImuIntrinsic());
+                  const ImuIntrinsic& intrinsic);
 
   void push_back(double dt, const Eigen::Vector3d& acc, const Eigen::Vector3d& gyr);
 
@@ -136,11 +136,11 @@ class IntegrationBase {
     gyr_0 = gyr_1;
   }
 
-  Eigen::Matrix<double, 15, 1> evaluate(const Eigen::Vector3d& Pi, const Eigen::Quaterniond& Qi,
-                                        const Eigen::Vector3d& Vi, const Eigen::Vector3d& Bai,
-                                        const Eigen::Vector3d& Bgi, const Eigen::Vector3d& Pj,
-                                        const Eigen::Quaterniond& Qj, const Eigen::Vector3d& Vj,
-                                        const Eigen::Vector3d& Baj, const Eigen::Vector3d& Bgj) {
+  inline Eigen::Matrix<double, 15, 1> evaluate(
+      const Eigen::Vector3d& Pi, const Eigen::Quaterniond& Qi, const Eigen::Vector3d& Vi,
+      const Eigen::Vector3d& Bai, const Eigen::Vector3d& Bgi, const Eigen::Vector3d& Pj,
+      const Eigen::Quaterniond& Qj, const Eigen::Vector3d& Vj, const Eigen::Vector3d& Baj,
+      const Eigen::Vector3d& Bgj) {
     Eigen::Matrix<double, 15, 1> residuals;
 
     Eigen::Matrix3d dp_dba = jacobian.block<3, 3>(O_P, O_BA);

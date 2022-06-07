@@ -30,7 +30,7 @@ class FeaturePerId {
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
-  const int feature_id;
+  const uint64_t feature_id;
   int start_frame;
   std::vector<FeaturePerFrame> feature_per_frame;
 
@@ -48,6 +48,8 @@ class FeaturePerId {
         solve_flag(0) {}
 
   int endFrame();
+
+  bool Valid() { return (feature_per_frame.size() >= 2 && start_frame < WINDOW_SIZE - 2); }
 };
 
 class FeatureManager {
@@ -61,8 +63,7 @@ class FeatureManager {
   int GetFeatureCount();
 
   bool AddFeatureCheckParallax(
-      int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 3, 1>>>>& image,
-      double td);
+      int frame_count, const map<uint64_t, vector<pair<int, Eigen::Matrix<double, 3, 1>>>>& image);
   vector<pair<Eigen::Vector3d, Eigen::Vector3d>> GetCorresponding(int frame_count_l,
                                                                   int frame_count_r);
 

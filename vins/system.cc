@@ -23,11 +23,25 @@ System::System(const vins::proto::VinsConfig& vins_config)
       vins_config.image_width(), vins_config.image_height(), vins_config.fx(), vins_config.fy(),
       vins_config.cx(), vins_config.cy(), dist_coeff});
 
+  // set imu extrinsics
   Eigen::Quaterniond qic(vins_config.camera_to_imu().qw(), vins_config.camera_to_imu().qx(),
                          vins_config.camera_to_imu().qy(), vins_config.camera_to_imu().qz());
   estimator_.SetParameter(Sophus::SO3d(qic), Eigen::Vector3d(vins_config.camera_to_imu().x(),
                                                              vins_config.camera_to_imu().y(),
                                                              vins_config.camera_to_imu().z()));
+  // set imu intrinsics if has valid input
+  if (vins_config.acc_noise() > 1e-10) {
+    estimator_.imu_intrinsics_.acc_noise = vins_config.acc_noise();
+  }
+  if (vins_config.gyr_noise() > 1e-10) {
+    estimator_.imu_intrinsics_.gyr_noise = vins_config.gyr_noise();
+  }
+  if (vins_config.acc_random_walk() > 1e-10) {
+    estimator_.imu_intrinsics_.acc_random_walk = vins_config.acc_random_walk();
+  }
+  if (vins_config.gyr_random_walk() > 1e-10) {
+    estimator_.imu_intrinsics_.gyr_random_walk = vins_config.gyr_random_walk();
+  }
   std::cout << "==> [SYSTEM] system initilize done." << endl;
 }
 
@@ -52,7 +66,7 @@ bool System::PublishImageData(int64_t timestamp, cv::Mat& img, cv::Mat& depth) {
   feature_tracker_.ReadImage(img, stamp_second, true);
   feature_tracker_.UpdateIdMono();
 
-  std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>> image;
+  std::map<uint64_t, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>> image;
   const auto& un_pts = feature_tracker_.vCurUndistortPts;
   const auto& feature_ids = feature_tracker_.vFeatureIds;
   const auto& pixels = feature_tracker_.vCurPts;
@@ -75,7 +89,11 @@ bool System::PublishImageData(int64_t timestamp, cv::Mat& img, cv::Mat& depth) {
     cv::waitKey(1);
   }
 
-  if (estimator_.solver_flag != Estimator::SolverFlag::NON_LINEAR) return false;
+  if (estimator_.solver_flag != Estimator::SolverFlag::NON_LINEAR) {
+    // clean the poses trajectory
+    camera_poses_.clear();
+    return false;
+  }
 
   // update frame poses
   for (int i = 0; i < WINDOW_SIZE + 1; i++) {
@@ -158,34 +176,20 @@ void System::Draw() {
     if (estimator_.solver_flag == Estimator::SolverFlag::NON_LINEAR) {
       glColor3f(1, 0, 0);
       for (int i = 0; i < WINDOW_SIZE + 1; ++i) {
-        Eigen::Vector3d& p_wi = estimator_.Ps[i];
-        glVertex3d(p_wi[0], p_wi[1], p_wi[2]);
+        Eigen::Vector3d p_wc =
+            estimator_.Rs[i] * estimator_.rigid_ic_.translation() + estimator_.Ps[i];
+        glVertex3d(p_wc[0], p_wc[1], p_wc[2]);
       }
     }
 
     if (menuShowMarPoints) {
       glColor3f(0, 0, 0);
-      int margalized_size = estimator_.margin_cloud_cloud.size();
-      for (int i = 0; i < margalized_size - 1; i++) {
-        for (auto& p_wi : estimator_.margin_cloud_cloud[i]) {
-          glVertex3d(p_wi[0], p_wi[1], p_wi[2]);
-        }
-      }
-      glColor3f(1, 0, 0);
-      if (margalized_size > 0) {
-        for (auto& p_wi : estimator_.margin_cloud_cloud[margalized_size - 1]) {
-          glVertex3d(p_wi[0], p_wi[1], p_wi[2]);
-        }
+      for (auto& iter : estimator_.all_map_points_) {
+        auto& pt = iter.second;
+        glVertex3d(pt[0], pt[1], pt[2]);
       }
     }
 
-    // map points currently seen
-    if (menuShowCurPoints) {
-      glColor3f(0, 1, 0);
-      for (Vec3 p_wi : estimator_.point_cloud) {
-        glVertex3d(p_wi[0], p_wi[1], p_wi[2]);
-      }
-    }
     glEnd();
 
     pangolin::FinishFrame();

@@ -15,17 +15,15 @@ class ImageFrame {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
   ImageFrame(){};
-  ImageFrame(const std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>>& _points,
-             int64_t _t)
-      : t{_t}, is_key_frame{false} {
-    points = _points;
-  };
-  std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>> points;
+  ImageFrame(
+      const std::map<uint64_t, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>>& _points,
+      int64_t _t)
+      : points(_points), t{_t} {}
+  std::map<uint64_t, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>> points;
   int64_t t;
   Eigen::Matrix3d R;
   Eigen::Vector3d T;
   IntegrationBase* pre_integration;
-  bool is_key_frame;
 };
 
 bool VisualIMUAlignment(const Eigen::Vector3d& trans_ic,

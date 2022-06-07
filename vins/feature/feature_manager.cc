@@ -20,12 +20,12 @@ int FeatureManager::GetFeatureCount() {
 }
 
 bool FeatureManager::AddFeatureCheckParallax(
-    int frame_count, const std::map<int, std::vector<std::pair<int, Eigen::Vector3d>>>& image,
-    double) {
+    int frame_count,
+    const std::map<uint64_t, std::vector<std::pair<int, Eigen::Vector3d>>>& image) {
   last_track_num = 0;
   for (auto& id_pts : image) {
-    const Eigen::Vector3d& pt_cam = id_pts.second[0].second;
-    int feature_id = id_pts.first;
+    Eigen::Vector3d pt_cam = id_pts.second[0].second;
+    uint64_t feature_id = id_pts.first;
     std::list<FeaturePerId>::iterator it =
         find_if(feature.begin(), feature.end(),
                 [feature_id](const FeaturePerId& it) { return it.feature_id == feature_id; });
@@ -35,11 +35,13 @@ bool FeatureManager::AddFeatureCheckParallax(
       if (pt_cam(2) > 0.1) {
         // we have good depth initialization (maybe from other sensor)
         it->estimated_depth = pt_cam(2);
-        // it->solve_flag = 3;
+        it->solve_flag = 3;
       }
     } else {
       last_track_num++;
     }
+    // we need to reset the point'z to 1.0 to make vins optimization works correctly
+    pt_cam(2) = 1.0;
     it->feature_per_frame.emplace_back(FeaturePerFrame(pt_cam));
   }
 
@@ -80,7 +82,7 @@ void FeatureManager::SetDepth(const Eigen::VectorXd& x) {
     if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2)) continue;
     double depth = 1.0 / x(feature_index++);
 
-    if (it_per_id.solve_flag == 3) continue;
+    // if (it_per_id.solve_flag == 3) continue;
 
     it_per_id.estimated_depth = depth;
     if (it_per_id.estimated_depth < 0) {

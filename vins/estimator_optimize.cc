@@ -230,28 +230,6 @@ double Estimator::ComputeCurrentLoss() {
   return total_lost * 0.5;
 }
 
-void Estimator::RollbackStates(const Estimator::States& backup) {
-  if (ESTIMATE_EXTRINSIC) {
-    rigid_ic_ = backup.rigid_ic;
-  }
-  for (int i = 0; i < feature::WINDOW_SIZE + 1; i++) {
-    Ps[i] = backup.Ps[i];
-    Rs[i] = backup.Rs[i];
-    Vs[i] = backup.Vs[i];
-    Bas[i] = backup.Bas[i];
-    Bgs[i] = backup.Bgs[i];
-  }
-
-  bprior_ = backup.bprior;
-  errprior_ = backup.errprior;
-
-  int idx = 0;
-  for (auto& it_per_id : f_manager.feature) {
-    if (!it_per_id.Valid()) continue;
-    it_per_id.estimated_depth = backup.depths[idx++];
-  }
-}
-
 Estimator::States Estimator::UpdateStates(const Eigen::VectorXd& delta_x) {
   static int pose_dim = (feature::WINDOW_SIZE + 1) * 15 + 6;
   States backup;

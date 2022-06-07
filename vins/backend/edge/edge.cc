@@ -42,17 +42,7 @@ double Edge::RobustCost() const {
 
 void Edge::RobustInfo(double* drho, Eigen::MatrixXd* info) const {
   if (lossfunction_) {
-    double cost = this->Cost();
-    Eigen::Vector3d rho = lossfunction_->Compute(cost);
-    Eigen::VectorXd weight_err = sqrt_information_ * residual_;
-    Eigen::MatrixXd robust_info(information_.rows(), information_.cols());
-    robust_info.setIdentity();
-    robust_info *= rho[1];
-    if (rho[1] + 2 * rho[2] * cost > 0.) {
-      robust_info += 2 * rho[2] * weight_err * weight_err.transpose();
-    }
-    *info = robust_info * information_;
-    *drho = rho[1];
+    RobustInformation(*lossfunction_.get(), information_, sqrt_information_, residual_, drho, info);
   } else {
     *drho = 1.0;
     *info = information_;

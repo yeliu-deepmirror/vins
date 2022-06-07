@@ -34,21 +34,37 @@ class Estimator {
   void processIMU(double t, const Vector3d& linear_acceleration, const Vector3d& angular_velocity);
 
   // original VINS interface for image (which support stereo camera)
-  void ProcessImage(const std::map<int, std::vector<std::pair<int, Eigen::Vector3d>>>& image,
+  void ProcessImage(const std::map<uint64_t, std::vector<std::pair<int, Eigen::Vector3d>>>& image,
                     int64_t header);
-
-  Eigen::Matrix<double, 3, 4> GetCurrentCameraPose();
 
   // internal
   void ClearState(bool bInit = false);
   bool InitialStructure();
-  bool visualInitialAlign();
+  bool VisualInitialAlign();
   bool relativePose(Matrix3d& relative_R, Vector3d& relative_T, int& l);
   void slideWindow();
   void SolveOdometry();
   void slideWindowNew();
   void slideWindowOld(const Eigen::Matrix3d& back_R0, const Eigen::Vector3d& back_P0);
-  void optimization();
+
+  // for optimization process
+  struct ProblemMeta {
+    double total_lost;
+    Eigen::MatrixXd h_matrix;
+    Eigen::VectorXd b_vec;
+  };
+  struct States {
+    Sophus::SE3d rigid_ic;
+    Eigen::Vector3d Ps[(feature::WINDOW_SIZE + 1)];
+    Eigen::Vector3d Vs[(feature::WINDOW_SIZE + 1)];
+    Eigen::Matrix3d Rs[(feature::WINDOW_SIZE + 1)];
+    Eigen::Vector3d Bas[(feature::WINDOW_SIZE + 1)];
+    Eigen::Vector3d Bgs[(feature::WINDOW_SIZE + 1)];
+  };
+  double ComputeCurrentLoss();
+  ProblemMeta MakeProblem(int landmark_size);
+  bool SolveProblem(const ProblemMeta& problem_meta, double lambda, Eigen::VectorXd* delta_x);
+  States UpdateStates(const Eigen::VectorXd& delta_x);
   void BackendOptimization();
 
   void ProblemSolve();
@@ -62,12 +78,15 @@ class Estimator {
   enum MarginalizationFlag { MARGIN_OLD = 0, MARGIN_SECOND_NEW = 1 };
 
   bool verbose_;
+  backend::ImuIntrinsic imu_intrinsics_;
 
   //////////////// OUR SOLVER ///////////////////
+  std::shared_ptr<backend::LossFunction> loss_fcn_;
   MatXX Hprior_;
   VecX bprior_;
   VecX errprior_;
   MatXX Jprior_inv_;
+  void ExtendedPrior(int dim);
 
   Eigen::Matrix2d project_sqrt_info_;
 
@@ -87,10 +106,9 @@ class Estimator {
   Vector3d Bas[(feature::WINDOW_SIZE + 1)];
   Vector3d Bgs[(feature::WINDOW_SIZE + 1)];
   VectorXd vInverseDepth;
-  double td;
 
-  Matrix3d last_R, last_R0;
-  Vector3d last_P, last_P0;
+  Matrix3d last_R;
+  Vector3d last_P;
   int64_t Headers[(feature::WINDOW_SIZE + 1)];
 
   backend::IntegrationBase* pre_integrations[(feature::WINDOW_SIZE + 1)];
@@ -108,22 +126,13 @@ class Estimator {
   bool first_imu;
   bool failure_occur;
 
-  // point cloud saved
-  bool save_cloud_for_show_ = true;
-  vector<Vector3d> point_cloud;
-  vector<Vector3d> margin_cloud;
-  vector<vector<Vector3d>> margin_cloud_cloud;
-  vector<Vector3d> key_poses;
-  int64_t initial_timestamp;
-
-  void SaveMarginalizedFrameHostedPoints(vins::backend::Problem& problem);
-  void UpdateCurrentPointcloud();
-
   // MarginalizationInfo *last_marginalization_info;
   vector<double*> last_marginalization_parameter_blocks;
 
   std::map<int64_t, backend::ImageFrame> all_image_frame;
   backend::IntegrationBase* tmp_pre_integration;
+
+  std::map<uint64_t, Eigen::Vector3d> all_map_points_;
 };
 
 }  // namespace vins

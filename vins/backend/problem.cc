@@ -8,12 +8,12 @@ using namespace std;
 namespace vins {
 namespace backend {
 namespace {
-bool IsPoseVertex(const std::shared_ptr<vins::backend::Vertex>& v) {
+inline bool IsPoseVertex(const std::shared_ptr<vins::backend::Vertex>& v) {
   VertexEdgeTypes type = v->TypeId();
   return type == V_CAMERA_POSE || type == V_IMU_SPEED_BIAS;
 }
 
-bool IsLandmarkVertex(const std::shared_ptr<vins::backend::Vertex>& v) {
+inline bool IsLandmarkVertex(const std::shared_ptr<vins::backend::Vertex>& v) {
   VertexEdgeTypes type = v->TypeId();
   return type == V_POINT_XYZ || type == V_INVERSE_DEPTH;
 }
@@ -46,6 +46,7 @@ void Problem::ResizePoseHessiansWhenAddingPose(shared_ptr<Vertex> v) {
   H_prior_.rightCols(v->LocalDimension()).setZero();
   H_prior_.bottomRows(v->LocalDimension()).setZero();
 }
+
 void Problem::ExtendHessiansPriorSize(int dim) {
   int size = H_prior_.rows() + dim;
   H_prior_.conservativeResize(size, size);
@@ -81,41 +82,6 @@ vector<shared_ptr<Edge>> Problem::GetConnectedEdges(std::shared_ptr<Vertex> vert
   return edges;
 }
 
-bool Problem::RemoveVertex(std::shared_ptr<Vertex> vertex) {
-  // check if the vertex is in map_vertices_
-  if (vertices_.find(vertex->Id()) == vertices_.end()) {
-    return false;
-  }
-
-  // delete the edges connected with the vertex
-  vector<shared_ptr<Edge>> remove_edges = GetConnectedEdges(vertex);
-
-  for (size_t i = 0; i < remove_edges.size(); i++) {
-    RemoveEdge(remove_edges[i]);
-  }
-
-  if (IsPoseVertex(vertex))
-    idx_pose_vertices_.erase(vertex->Id());
-  else
-    idx_landmark_vertices_.erase(vertex->Id());
-
-  vertex->SetOrderingId(-1);  // used to debug
-  vertices_.erase(vertex->Id());
-  vertexToEdge_.erase(vertex->Id());
-
-  return true;
-}
-
-bool Problem::RemoveEdge(std::shared_ptr<Edge> edge) {
-  // check if the edge is in map_edges_
-  if (edges_.find(edge->Id()) == edges_.end()) {
-    return false;
-  }
-
-  edges_.erase(edge->Id());
-  return true;
-}
-
 bool Problem::Solve(int iterations, bool verbose) {
   if (edges_.size() == 0 || vertices_.size() == 0) {
     return false;
@@ -132,6 +98,7 @@ bool Problem::Solve(int iterations, bool verbose) {
   double last_chi = std::numeric_limits<double>::max();
   if (verbose) {
     std::printf(" | %10s | %13s | %13s | %13s |\n", "Iteration", "Residual", "Norm Dx", "Lambda");
+    std::printf(" | init | %13.6f | xxx | %13.6f |\n", currentChi_, currentLambda_);
   }
   for (int iter = 0; iter < iterations; iter++) {
     for (int lm_try = 0; lm_try < 8; lm_try++) {
@@ -430,24 +397,6 @@ void Problem::ComputeLambdaInitLM() {
   currentLambda_ = tau * maxDiagonal;
 }
 
-// not used in slam system
-void Problem::AddLambdatoHessianLM() {
-  ulong size = Hessian_.cols();
-  assert(Hessian_.rows() == Hessian_.cols() && "Hessian is not square");
-  for (ulong i = 0; i < size; ++i) {
-    Hessian_(i, i) += currentLambda_;
-  }
-}
-
-// not used in slam system
-void Problem::RemoveLambdaHessianLM() {
-  ulong size = Hessian_.cols();
-  assert(Hessian_.rows() == Hessian_.cols() && "Hessian is not square");
-  for (ulong i = 0; i < size; ++i) {
-    Hessian_(i, i) -= currentLambda_;
-  }
-}
-
 bool Problem::IsGoodStepInLM() {
   double scale = 0;
   scale = 0.5 * delta_x_.transpose() * (currentLambda_ * delta_x_ + b_);
@@ -523,250 +472,6 @@ VecX Problem::PCGSolver(const MatXX& Hpp, const VecX& bpp, int maxIter, double s
     rho = r.dot(z);
   }
   return x;
-}
-
-/*
- * marginalize all the edges connected with the frame (imu factors and the projection factors)
- *
- * If we want to keep a landmark which is connected with the frame, we should first delete this
- * edge, otherwise the Hessian will become denser, which will slow down the process.
- */
-bool Problem::Marginalize(const std::vector<std::shared_ptr<Vertex>> margVertexs, int pose_dim) {
-  SetOrdering();
-  /// find the edges to marginalize,
-  // margVertexs[0] is frame, its edge contained pre-intergration
-  std::vector<shared_ptr<Edge>> marg_edges = GetConnectedEdges(margVertexs[0]);
-
-  // when find the marginalized landmark, find its 3D position in world and save it
-  marginalized_pts.clear();
-  current_pts.clear();
-
-  std::unordered_map<int, shared_ptr<Vertex>> margLandmark;
-
-  // build the Hessian matrix while keep the order of pose
-  // the order of landmarks may change
-  int marg_landmark_size = 0;
-
-  for (size_t i = 0; i < marg_edges.size(); ++i) {
-    if (marg_edges[i]->TypeInfo() == string("EdgeReprojection")) {
-      // only the first vertices of edge reprojection is landmark vertex
-      // and we are sure that this will contain all the vertices we want
-      auto iter = marg_edges[i]->Vertices()[0];
-      if (margLandmark.find(iter->Id()) == margLandmark.end()) {
-        iter->SetOrderingId(pose_dim + marg_landmark_size);
-        margLandmark.insert(make_pair(iter->Id(), iter));
-        // marg_landmark_size += iter->LocalDimension();
-        // LocalDimension() is one for landmark vertices (inverse depth only)
-        marg_landmark_size += 1;
-
-        if (ifRecordMap) {
-          // the vertex[1] of the edge i should be the host point from which we can extract its
-          // world position here we saved all the points connected to the frame however we should
-          // only save the points only owned by the frame
-          std::vector<std::shared_ptr<Edge>> remove_edges = GetConnectedEdges(iter);
-          std::shared_ptr<EdgeReprojection> edge_factor =
-              std::static_pointer_cast<EdgeReprojection>(marg_edges[i]);
-          Vec3 pts_w = edge_factor->GetPointInWorld();
-          if (remove_edges.size() == 1) {
-            marginalized_pts.push_back(pts_w);
-          } else {
-            current_pts.push_back(pts_w);
-          }
-        }
-      }
-    }
-    /*
-            // old version, loop all the vertices to find landmark vertices
-            auto vertices = marg_edges[i]->Vertices();
-            for (auto iter : vertices) {
-                // if the vertex is a landmark and is not redundant in the margLandmark set
-                if (IsLandmarkVertex(iter) && margLandmark.find(iter->Id()) == margLandmark.end()) {
-                    iter->SetOrderingId(pose_dim + marg_landmark_size);
-                    margLandmark.insert(make_pair(iter->Id(), iter));
-                    marg_landmark_size += iter->LocalDimension();
-                }
-            }
-    */
-  }
-
-  // the size of variables to be marginalized // pose_dim = 171
-  int cols = pose_dim + marg_landmark_size;
-
-  /// build the hessian matrix:  H = H_marg + H_pp_prior
-  // H_marg has variables : { external_parameters,  poses , landmark_view_by_marginalized_frame )
-  MatXX H_marg(MatXX::Zero(cols, cols));
-  VecX b_marg(VecX::Zero(cols));
-  int ii = 0;
-  for (auto edge : marg_edges) {
-    edge->ComputeResidual();
-    edge->ComputeJacobians();
-    auto jacobians = edge->Jacobians();
-    auto vertices = edge->Vertices();
-    ii++;
-
-    assert(jacobians.size() == vertices.size());
-    for (size_t i = 0; i < vertices.size(); ++i) {
-      auto v_i = vertices[i];
-      auto jacobian_i = jacobians[i];
-      ulong index_i = v_i->OrderingId();
-      ulong dim_i = v_i->LocalDimension();
-
-      double drho;
-      MatXX robustInfo;
-      edge->RobustInfo(&drho, &robustInfo);
-
-      for (size_t j = i; j < vertices.size(); ++j) {
-        auto v_j = vertices[j];
-        auto jacobian_j = jacobians[j];
-        ulong index_j = v_j->OrderingId();
-        ulong dim_j = v_j->LocalDimension();
-
-        MatXX hessian = jacobian_i.transpose() * robustInfo * jacobian_j;
-
-        assert(hessian.rows() == v_i->LocalDimension() && hessian.cols() == v_j->LocalDimension());
-        // add all the hessians
-        H_marg.block(index_i, index_j, dim_i, dim_j) += hessian;
-        if (j != i) {
-          // hessian is symmetry
-          H_marg.block(index_j, index_i, dim_j, dim_i) += hessian.transpose();
-        }
-      }
-      b_marg.segment(index_i, dim_i) -=
-          drho * jacobian_i.transpose() * edge->Information() * edge->Residual();
-    }
-  }
-
-  /// marg landmark
-  int reserve_size = pose_dim;
-  if (marg_landmark_size > 0) {
-    int marg_size = marg_landmark_size;
-    MatXX Hmm = H_marg.block(reserve_size, reserve_size, marg_size, marg_size);
-    MatXX Hpm = H_marg.block(0, reserve_size, reserve_size, marg_size);
-    MatXX Hmp = H_marg.block(reserve_size, 0, marg_size, reserve_size);
-    VecX bpp = b_marg.segment(0, reserve_size);
-    VecX bmm = b_marg.segment(reserve_size, marg_size);
-
-    /*
-    // Hmm is digonal matrix, its inverse can be calculated by its blocks' inverses.
-    MatXX Hmm_inv(MatXX::Zero(marg_size, marg_size));
-    // TODO:: use openMP to speed up
-    for (auto iter: margLandmark) {
-        int idx = iter.second->OrderingId() - reserve_size;
-        int size = iter.second->LocalDimension();
-        Hmm_inv.block(idx, idx, size, size) = Hmm.block(idx, idx, size, size).inverse();
-    }
-    */
-
-    // BASTIAN_M : use sparse matrix to accelerate and save memory
-    // tutorial : https://eigen.tuxfamily.org/dox/group__TutorialSparse.html
-    // as for vins system, we use inverse depth, each vertex will only have one value
-    // we will reserve the space for memory savage
-    Eigen::SparseMatrix<double> Hmm_inv(marg_size, marg_size);
-    Hmm_inv.reserve(Eigen::VectorXi::Constant(marg_size, 1));
-    for (auto landmarkVertex : idx_landmark_vertices_) {
-      int idx = landmarkVertex.second->OrderingId() - reserve_size;
-      // BASTIAN_MARK: this is only for vins system
-      // int size = landmarkVertex.second->LocalDimension();
-      // assert(size == 1);
-      Hmm_inv.insert(idx, idx) = 1 / Hmm(idx, idx);
-    }
-    Hmm_inv.makeCompressed();
-
-    MatXX tempH = Hpm * Hmm_inv;
-    MatXX Hpp = H_marg.block(0, 0, reserve_size, reserve_size) - tempH * Hmp;
-    bpp = bpp - tempH * bmm;
-    H_marg = Hpp;
-    b_marg = bpp;
-  }
-
-  VecX b_prior_before = b_prior_;
-  if (H_prior_.rows() > 0) {
-    H_marg += H_prior_;
-    b_marg += b_prior_;
-  }
-
-  /// marg frame and speedbias
-  int marg_dim = 0;
-
-  // move the index from the tail of the vector
-  for (int k = margVertexs.size() - 1; k >= 0; --k) {
-    int idx = margVertexs[k]->OrderingId();
-    int dim = margVertexs[k]->LocalDimension();
-    marg_dim += dim;
-    // move the marginalized frame pose to the Hmm bottown right
-    // 1. move row i the lowest part
-    Eigen::MatrixXd temp_rows = H_marg.block(idx, 0, dim, reserve_size);
-    Eigen::MatrixXd temp_botRows =
-        H_marg.block(idx + dim, 0, reserve_size - idx - dim, reserve_size);
-    H_marg.block(idx, 0, reserve_size - idx - dim, reserve_size) = temp_botRows;
-    H_marg.block(reserve_size - dim, 0, dim, reserve_size) = temp_rows;
-
-    // put col i to the rightest part
-    Eigen::MatrixXd temp_cols = H_marg.block(0, idx, reserve_size, dim);
-    Eigen::MatrixXd temp_rightCols =
-        H_marg.block(0, idx + dim, reserve_size, reserve_size - idx - dim);
-    H_marg.block(0, idx, reserve_size, reserve_size - idx - dim) = temp_rightCols;
-    H_marg.block(0, reserve_size - dim, reserve_size, dim) = temp_cols;
-
-    Eigen::VectorXd temp_b = b_marg.segment(idx, dim);
-    Eigen::VectorXd temp_btail = b_marg.segment(idx + dim, reserve_size - idx - dim);
-    b_marg.segment(idx, reserve_size - idx - dim) = temp_btail;
-    b_marg.segment(reserve_size - dim, dim) = temp_b;
-  }
-
-  double eps = 1e-8;
-  int m2 = marg_dim;
-  int n2 = reserve_size - marg_dim;  // marg pose
-  Eigen::MatrixXd Amm =
-      0.5 * (H_marg.block(n2, n2, m2, m2) + H_marg.block(n2, n2, m2, m2).transpose());
-
-  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes(Amm);
-  Eigen::MatrixXd Amm_inv =
-      saes.eigenvectors() *
-      Eigen::VectorXd(
-          (saes.eigenvalues().array() > eps).select(saes.eigenvalues().array().inverse(), 0))
-          .asDiagonal() *
-      saes.eigenvectors().transpose();
-
-  Eigen::VectorXd bmm2 = b_marg.segment(n2, m2);
-  Eigen::MatrixXd Arm = H_marg.block(0, n2, n2, m2);
-  Eigen::MatrixXd Amr = H_marg.block(n2, 0, m2, n2);
-  Eigen::MatrixXd Arr = H_marg.block(0, 0, n2, n2);
-  Eigen::VectorXd brr = b_marg.segment(0, n2);
-  Eigen::MatrixXd tempB = Arm * Amm_inv;
-  // the rest pose become the new prior matrix
-  // upper we move the rest pose to the upper left, and new pose will be added at lower right.
-  // as a result the order of variables of the prior matrix is corresponding to the up coming
-  // Hessian.
-  H_prior_ = Arr - tempB * Amr;
-  b_prior_ = brr - tempB * bmm2;
-
-  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes2(H_prior_);
-  Eigen::VectorXd S =
-      Eigen::VectorXd((saes2.eigenvalues().array() > eps).select(saes2.eigenvalues().array(), 0));
-  Eigen::VectorXd S_inv = Eigen::VectorXd(
-      (saes2.eigenvalues().array() > eps).select(saes2.eigenvalues().array().inverse(), 0));
-
-  Eigen::VectorXd S_sqrt = S.cwiseSqrt();
-  Eigen::VectorXd S_inv_sqrt = S_inv.cwiseSqrt();
-  Jt_prior_inv_ = S_inv_sqrt.asDiagonal() * saes2.eigenvectors().transpose();
-  err_prior_ = -Jt_prior_inv_ * b_prior_;
-
-  MatXX J = S_sqrt.asDiagonal() * saes2.eigenvectors().transpose();
-  H_prior_ = J.transpose() * J;
-  MatXX tmp_h = MatXX((H_prior_.array().abs() > 1e-9).select(H_prior_.array(), 0));
-  H_prior_ = tmp_h;
-
-  // remove vertex and remove edge
-  for (size_t k = 0; k < margVertexs.size(); ++k) {
-    RemoveVertex(margVertexs[k]);
-  }
-
-  for (auto landmarkVertex : margLandmark) {
-    RemoveVertex(landmarkVertex.second);
-  }
-
-  return true;
 }
 
 }  // namespace backend

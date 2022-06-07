@@ -112,30 +112,7 @@ class Utility {
     return R0;
   }
 
-  template <size_t N>
-  struct uint_ {};
-
-  template <size_t N, typename Lambda, typename IterT>
-  void unroller(const Lambda& f, const IterT& iter, uint_<N>) {
-    unroller(f, iter, uint_<N - 1>());
-    f(iter + N);
-  }
-
-  template <typename Lambda, typename IterT>
-  void unroller(const Lambda& f, const IterT& iter, uint_<0>) {
-    f(iter);
-  }
-
-  template <typename T>
-  static T normalizeAngle(const T& angle_degrees) {
-    T two_pi(2.0 * 180);
-    if (angle_degrees > 0)
-      return angle_degrees - two_pi * std::floor((angle_degrees + T(180)) / two_pi);
-    else
-      return angle_degrees + two_pi * std::floor((-angle_degrees + T(180)) / two_pi);
-  };
-
-  static Eigen::Matrix3d InverseRightJacobian(const Eigen::Vector3d& phi) {
+  inline static Eigen::Matrix3d InverseRightJacobian(const Eigen::Vector3d& phi) {
     const double theta2 = phi.squaredNorm();
     const Eigen::Matrix3d phi_hat = Sophus::SO3d::hat(phi);
     if (theta2 <= 1e-8) {
@@ -149,6 +126,85 @@ class Utility {
                (outer_product - Eigen::Matrix3d::Identity());
   }
 };
+
+// marginalize the new frame, which has no visual edge involved
+inline void MarginalizeFrameInternal(int idx, int dim, Eigen::MatrixXd* h_prior,
+                                     Eigen::VectorXd* b_prior, Eigen::VectorXd* error_prior,
+                                     Eigen::MatrixXd* jaco_prior_inv) {
+  // skip check for pointer
+  CHECK(h_prior != nullptr);
+  CHECK(b_prior != nullptr);
+  CHECK(error_prior != nullptr);
+  CHECK(jaco_prior_inv != nullptr);
+
+  // dim shall be 15:
+  // for 3 position, 3 rotation, 3 velocity, 3 bias_acc, 3 bias_gyr
+  CHECK_EQ(dim, 15);
+
+  // move the variables to the bottom right
+  int reserve_size = h_prior->cols();
+  int output_size = reserve_size - dim;
+  {
+    int tail_size = reserve_size - idx - dim;
+    // move the marginalized frame pose to the Hmm bottown right
+    // 1. move row i the lowest part
+    Eigen::MatrixXd temp_rows = h_prior->block(idx, 0, dim, reserve_size);
+    Eigen::MatrixXd temp_botrows = h_prior->block(idx + dim, 0, tail_size, reserve_size);
+    h_prior->block(idx, 0, tail_size, reserve_size) = temp_botrows;
+    h_prior->block(output_size, 0, dim, reserve_size) = temp_rows;
+
+    // put col i to the rightest part
+    Eigen::MatrixXd temp_cols = h_prior->block(0, idx, reserve_size, dim);
+    Eigen::MatrixXd temp_rgtcols = h_prior->block(0, idx + dim, reserve_size, tail_size);
+    h_prior->block(0, idx, reserve_size, tail_size) = temp_rgtcols;
+    h_prior->block(0, output_size, reserve_size, dim) = temp_cols;
+
+    Eigen::VectorXd temp_b = b_prior->segment(idx, dim);
+    Eigen::VectorXd temp_btail = b_prior->segment(idx + dim, tail_size);
+    b_prior->segment(idx, tail_size) = temp_btail;
+    b_prior->segment(output_size, dim) = temp_b;
+  }
+
+  static double eps = 1e-8;
+  {
+    // update h_prior & b_prior
+    Eigen::MatrixXd Amm = 0.5 * (h_prior->block(output_size, output_size, dim, dim) +
+                                 h_prior->block(output_size, output_size, dim, dim).transpose());
+
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes(Amm);
+    Eigen::VectorXd Amm_diag =
+        (saes.eigenvalues().array() > eps).select(saes.eigenvalues().array().inverse(), 0);
+    Eigen::MatrixXd Amm_inv =
+        saes.eigenvectors() * Amm_diag.asDiagonal() * saes.eigenvectors().transpose();
+
+    Eigen::VectorXd bmm2 = b_prior->segment(output_size, dim);
+    Eigen::MatrixXd Arm = h_prior->block(0, output_size, output_size, dim);
+    Eigen::MatrixXd Amr = h_prior->block(output_size, 0, dim, output_size);
+    Eigen::MatrixXd Arr = h_prior->block(0, 0, output_size, output_size);
+    Eigen::VectorXd brr = b_prior->segment(0, output_size);
+    Eigen::MatrixXd tempB = Arm * Amm_inv;
+    // the rest pose become the new prior matrix
+    // upper we move the rest pose to the upper left, and new pose will be added at lower right.
+    // as a result the order of variables of the prior matrix is corresponding to the up coming
+    // Hessian.
+    *h_prior = Arr - tempB * Amr;
+    *b_prior = brr - tempB * bmm2;
+  }
+
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes2(*h_prior);
+  auto& saes2_array = saes2.eigenvalues().array();
+  Eigen::VectorXd S = Eigen::VectorXd((saes2_array > eps).select(saes2_array, 0));
+  Eigen::VectorXd S_inv = Eigen::VectorXd((saes2_array > eps).select(saes2_array.inverse(), 0));
+
+  Eigen::VectorXd S_sqrt = S.cwiseSqrt();
+  Eigen::VectorXd S_inv_sqrt = S_inv.cwiseSqrt();
+  *jaco_prior_inv = S_inv_sqrt.asDiagonal() * saes2.eigenvectors().transpose();
+  *error_prior = -(*jaco_prior_inv) * (*b_prior);
+
+  Eigen::MatrixXd J = S_sqrt.asDiagonal() * saes2.eigenvectors().transpose();
+  Eigen::MatrixXd tmp_h = J.transpose() * J;
+  *h_prior = MatXX((tmp_h.array().abs() > eps).select(tmp_h.array(), 0));
+}
 
 }  // namespace backend
 }  // namespace vins

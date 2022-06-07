@@ -48,5 +48,23 @@ class TukeyLoss : public LossFunction {
   double sqr_delta_;
 };
 
+inline double RobustInformation(const LossFunction& loss_fcn, const Eigen::MatrixXd& information,
+                                const Eigen::MatrixXd& sqrt_information,
+                                const Eigen::VectorXd& residual, double* drho,
+                                Eigen::MatrixXd* info) {
+  double cost = residual.transpose() * information * residual;
+  Eigen::Vector3d rho = loss_fcn.Compute(cost);
+  Eigen::VectorXd weight_err = sqrt_information * residual;
+  Eigen::MatrixXd robust_info(information.rows(), information.cols());
+  robust_info.setIdentity();
+  robust_info *= rho[1];
+  if (rho[1] + 2.0 * rho[2] * cost > 0.) {
+    robust_info += 2.0 * rho[2] * weight_err * weight_err.transpose();
+  }
+  *info = robust_info * information;
+  *drho = rho[1];
+  return rho[0];
+}
+
 }  // namespace backend
 }  // namespace vins

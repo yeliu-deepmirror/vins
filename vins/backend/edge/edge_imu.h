@@ -33,5 +33,14 @@ class EdgeImu : public Edge {
   Mat33 dv_dbg_ = Mat33::Zero();
 };
 
+void ComputeImuJacobian(const Eigen::Vector3d& t_w_i1, const Eigen::Quaterniond& r_w_i1,
+                        const Eigen::Vector3d& v1, const Eigen::Vector3d& ba1,
+                        const Eigen::Vector3d& bg1, const Eigen::Vector3d& t_w_i2,
+                        const Eigen::Quaterniond& r_w_i2, const Eigen::Vector3d& v2,
+                        const Eigen::Vector3d& ba2, const Eigen::Vector3d& bg2,
+                        IntegrationBase* pre_integration, Eigen::MatrixXd* jaco_p1,
+                        Eigen::MatrixXd* jaco_sb1, Eigen::MatrixXd* jaco_p2,
+                        Eigen::MatrixXd* jaco_sb2, Eigen::VectorXd* residual);
+
 }  // namespace backend
 }  // namespace vins

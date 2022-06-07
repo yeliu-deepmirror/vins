@@ -37,10 +37,6 @@ class FeatureTracker {
   void AddPointsToTrack(std::vector<cv::Point2f>& vNewFeatures);
   void RejectWithFundamentalMatrix();
 
-  // update the vFeatureIds of the features (this complicate function allow correct update for
-  // multiple cameras)
-  bool updateID(unsigned int i);
-
   // update Ids as linear process, only for monocular camera case
   void UpdateIdMono();
 
@@ -53,7 +49,7 @@ class FeatureTracker {
   double prev_time;
   cv::Mat mCurImg, mForwImg;
   std::vector<cv::Point2f> vCurPts, vForwPts;
-  std::vector<int> vFeatureIds;
+  std::vector<uint64_t> vFeatureIds;
   std::vector<int> vTrackCnt;
 
   // saved for publisher
@@ -66,7 +62,7 @@ class FeatureTracker {
 
   CameraIntrinsic intrinsic_;
 
-  static int n_id;
+  static uint64_t n_id;
 
   // options
   bool equalize_ = true;

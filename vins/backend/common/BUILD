@@ -27,22 +27,25 @@ cc_library(
 
 cc_library(
     name = "utility",
-    srcs = [
-        "utility.h"
-    ],
+    srcs = ["utility.h"],
     deps = [
         ":eigen_types",
     ],
 )
 
 cc_library(
+    name = "cost_function",
+    srcs = ["cost_function.cc"],
+    hdrs = ["cost_function.h"],
+    deps = [
+        ":integration_base",
+    ],
+)
+
+cc_library(
     name = "integration_base",
-    srcs = [
-        "integration_base.cc"
-    ],
-    hdrs = [
-        "integration_base.h",
-    ],
+    srcs = ["integration_base.cc"],
+    hdrs = ["integration_base.h"],
     deps = [
         ":utility",
     ],

@@ -1,13 +1,10 @@
 
 #include "vins/estimator.h"
 
-#include <fstream>
-#include <ostream>
-
 namespace vins {
 
 Estimator::Estimator(bool verbose)
-    : verbose_(verbose), loss_fcn_(std::make_shared<backend::CauchyLoss>(1.0)), f_manager{Rs} {
+    : verbose_(verbose), loss_fcn_(std::make_shared<backend::HuberLoss>(0.2)), f_manager{Rs} {
   LOG(INFO) << "[ESTIMATOR] initialized.";
   ClearState(true);
 }

@@ -12,9 +12,9 @@ cc_library(
         "parameters.h",
     ],
     deps = [
-        "//vins/backend:problem",
         "//vins/backend/common:tic_toc",
-        "//vins/backend/common:utility",
+        "//vins/backend/common:cost_function",
+        "//vins/backend/common:loss_function",
         "//vins/feature:feature_manager",
         "//vins/feature:feature_tracker",
         "//vins/initialization:initial_alignment",

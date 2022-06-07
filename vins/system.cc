@@ -100,7 +100,7 @@ bool System::PublishImageData(int64_t timestamp, cv::Mat& img, cv::Mat& depth) {
     Eigen::Matrix3d rot = estimator_.Rs[i] * estimator_.rigid_ic_.so3().matrix();
     Eigen::Vector3d trans =
         estimator_.Rs[i] * estimator_.rigid_ic_.translation() + estimator_.Ps[i];
-    camera_poses_[estimator_.Headers[i]] = Sophus::SE3d(rot, trans);
+    camera_poses_[estimator_.Headers[i]] = Sophus::SE3d(Eigen::Quaterniond(rot), trans);
   }
   return true;
 }

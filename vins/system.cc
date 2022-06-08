@@ -139,10 +139,10 @@ void System::Draw() {
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-  pangolin::CreatePanel("menu").SetBounds(0.0, 1.0, 0.0, pangolin::Attach::Pix(200));
-  pangolin::Var<bool> menuShowMarPoints("menu.Marginalized Points", true, true);
-  pangolin::Var<bool> menuShowCurPoints("menu.Current Points", true, true);
-  pangolin::Var<bool> menuShowKeyFrames("menu.KeyFrames", true, true);
+  pangolin::CreatePanel("menu_vins").SetBounds(0.0, 1.0, 0.0, pangolin::Attach::Pix(200));
+  pangolin::Var<bool> menuShowMarPoints("menu_vins.Marginalized Points", true, true);
+  pangolin::Var<bool> menuShowCurPoints("menu_vins.Current Points", true, true);
+  pangolin::Var<bool> menuShowKeyFrames("menu_vins.KeyFrames", true, true);
 
   pangolin::OpenGlRenderState s_cam(
       pangolin::ProjectionMatrix(1024, 768, 500, 500, 512, 384, 0.1, 1000),

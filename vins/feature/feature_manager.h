@@ -20,6 +20,7 @@ const double MIN_PARALLAX = 0.04;
 const double INIT_DEPTH = 2.0;
 
 struct FeaturePerFrame {
+  FeaturePerFrame() = default;
   explicit FeaturePerFrame(const Eigen::Matrix<double, 3, 1>& _point) : point(_point) {
     if (point(2) < 0.1) point(2) = 1.0;
   }
@@ -34,18 +35,14 @@ class FeaturePerId {
   int start_frame;
   std::vector<FeaturePerFrame> feature_per_frame;
 
-  int used_num;
   double estimated_depth;
+  std::optional<double> depth_gt;
   // 0 haven't solve yet; 1 solve succ; 2 solve fail; 3 good initial
   // we good initial we will skip optimization & triangulation
   int solve_flag;
 
   FeaturePerId(int _feature_id, int _start_frame)
-      : feature_id(_feature_id),
-        start_frame(_start_frame),
-        used_num(0),
-        estimated_depth(-1.0),
-        solve_flag(0) {}
+      : feature_id(_feature_id), start_frame(_start_frame), estimated_depth(-1.0), solve_flag(0) {}
 
   int endFrame();
 
@@ -60,20 +57,17 @@ class FeatureManager {
 
   void ClearState();
 
-  int GetFeatureCount();
-
   bool AddFeatureCheckParallax(
-      int frame_count, const map<uint64_t, vector<pair<int, Eigen::Matrix<double, 3, 1>>>>& image);
-  vector<pair<Eigen::Vector3d, Eigen::Vector3d>> GetCorresponding(int frame_count_l,
-                                                                  int frame_count_r);
+      int frame_count,
+      const std::map<uint64_t, std::vector<std::pair<int, Eigen::Vector3d>>>& image);
+  std::vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> GetCorresponding(int frame_count_l,
+                                                                            int frame_count_r);
 
-  void SetDepth(const Eigen::VectorXd& x);
   void removeFailures();
   void ClearDepth();
-  Eigen::VectorXd GetInverseDepthVector();
-  void triangulate(Eigen::Vector3d Ps[], Eigen::Vector3d tic, Eigen::Matrix3d ric);
-  void RemoveBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3d marg_P, Eigen::Matrix3d new_R,
-                            Eigen::Vector3d new_P);
+  void Triangulate(Eigen::Vector3d Ps[], const Eigen::Vector3d& tic, const Eigen::Matrix3d& ric);
+  void RemoveBackShiftDepth(const Eigen::Matrix3d& marg_R, const Eigen::Vector3d& marg_P,
+                            const Eigen::Matrix3d& new_R, const Eigen::Vector3d& new_P);
   void RemoveBack();
   void removeFront(int frame_count);
 

@@ -6,6 +6,7 @@ cc_library(
         "estimator.cc",
         "estimator_optimize.cc",
         "estimator_initialize.cc",
+        "estimator_marginalize.cc",
     ],
     hdrs = [
         "estimator.h",

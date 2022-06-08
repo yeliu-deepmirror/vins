@@ -2,193 +2,48 @@
 #include "vins/estimator.h"
 
 namespace vins {
-namespace {
 
-inline void UpdateProblemMatrix(const std::vector<Eigen::MatrixXd>& jacobians,
-                                const std::vector<int>& indices, const std::vector<int>& dimensions,
-                                const Eigen::VectorXd& residual,
-                                const Eigen::MatrixXd& robust_information, double drho,
-                                Eigen::MatrixXd* h_mat, Eigen::VectorXd* b_vec) {
-  // add to the final hessian matrix
-  for (size_t a = 0; a < jacobians.size(); a++) {
-    if (dimensions[a] < 0) {
-      // we use negative dimension as indicator for fixed node
-      continue;
-    }
-    Eigen::MatrixXd jtw = jacobians[a].transpose() * robust_information;
-    for (size_t b = a; b < jacobians.size(); b++) {
-      if (dimensions[b] < 0) {
-        // we use negative dimension as indicator for fixed node
-        continue;
-      }
-      Eigen::MatrixXd hessian = jtw * jacobians[b];
-      h_mat->block(indices[a], indices[b], dimensions[a], dimensions[b]) += hessian;
-      if (a != b) {
-        h_mat->block(indices[b], indices[a], dimensions[b], dimensions[a]) += hessian.transpose();
-      }
-    }
-    b_vec->segment(indices[a], dimensions[a]) -= drho * jtw * residual;
-  }
-}
-}  // namespace
-
-void Estimator::MargOldFrame() {
-  int pose_dim = (feature::WINDOW_SIZE + 1) * 15 + 6;
-
-  // make the marginalization matrix from the edges (only visual edges)
-  if (Hprior_.rows() > 0) {
-    ExtendedPrior(15);
-  } else {
-    Hprior_ = Eigen::MatrixXd::Zero(pose_dim, pose_dim);
-    bprior_ = Eigen::VectorXd::Zero(pose_dim);
-  }
-
-  Eigen::MatrixXd information = project_sqrt_info_.transpose() * project_sqrt_info_;
-
-  // compute marginalization observation size
-  int marg_landmark_size = 0;
+std::pair<int, int> Estimator::RejectOutliers(double threshold) {
+  int outlier_cnt = 0;
+  int inlier_cnt = 0;
   for (auto& it_per_id : f_manager.feature) {
     if (!it_per_id.Valid()) continue;
-    if (it_per_id.start_frame != 0) continue;
-    marg_landmark_size++;
-  }
 
-  int marg_size = pose_dim + marg_landmark_size;
-  Eigen::MatrixXd marginalization_matrix(Eigen::MatrixXd::Zero(marg_size, marg_size));
-  Eigen::VectorXd marginalization_vec(Eigen::VectorXd::Zero(marg_size));
-
-  // for the imu factor
-  if (pre_integrations[1]->sum_dt < 10.0) {
-    Eigen::VectorXd residual;
-    std::vector<Eigen::MatrixXd> jacobians(4);
-    std::vector<int> indices{6, 12, 21, 27};
-    std::vector<int> dimensions{6, 9, 6, 9};
-    backend::ComputeImuJacobian(Ps[0], Eigen::Quaterniond(Rs[0]), Vs[0], Bas[0], Bgs[0], Ps[1],
-                                Eigen::Quaterniond(Rs[1]), Vs[1], Bas[1], Bgs[1],
-                                pre_integrations[1], &(jacobians[0]), &(jacobians[1]),
-                                &(jacobians[2]), &(jacobians[3]), &residual);
-
-    Eigen::MatrixXd information = pre_integrations[1]->covariance.inverse();
-    UpdateProblemMatrix(jacobians, indices, dimensions, residual, information, 1.0,
-                        &marginalization_matrix, &marginalization_vec);
-  }
-
-  int landmark_id = 0;
-  int feature_index = -1;
-  // for all the viewed features
-  for (auto& it_per_id : f_manager.feature) {
-    if (!it_per_id.Valid()) continue;
-    ++feature_index;
-    int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
-    if (imu_i != 0) continue;
-
+    int imu_i = it_per_id.start_frame;
     const Eigen::Vector3d& pt_1 = it_per_id.feature_per_frame[0].point;
     double inv_depth_i = 1.0 / it_per_id.estimated_depth;
-    int idx_i = imu_i * 15 + 6;
-    int idx_feature = pose_dim + landmark_id++;
 
-    {
-      // add point to map
-      Eigen::Vector3d pt_camera_1 = pt_1 / inv_depth_i;
-      all_map_points_[it_per_id.feature_id] = Rs[imu_i] * (rigid_ic_ * pt_camera_1) + Ps[imu_i];
-    }
-
-    // for all its observations -> each has a reprojection error w.r.t the first observation
-    for (auto& it_per_frame : it_per_id.feature_per_frame) {
-      imu_j++;
-      if (imu_i == imu_j) continue;
-      int idx_j = imu_j * 15 + 6;
-      const Eigen::Vector3d& pt_2 = it_per_frame.point;
-
-      Eigen::VectorXd residual;
-      std::vector<Eigen::MatrixXd> jacobians(4);
-      std::vector<int> indices{idx_i, idx_j, 0, idx_feature};
-      std::vector<int> dimensions{6, 6, ESTIMATE_EXTRINSIC ? 6 : -1, 1};
-      backend::ComputeVisualJacobian(
+    size_t inlier_end = it_per_id.feature_per_frame.size();
+    for (size_t i = 1; i < it_per_id.feature_per_frame.size(); i++) {
+      const Eigen::Vector3d& pt_2 = it_per_id.feature_per_frame[i].point;
+      int imu_j = imu_i + i;
+      Eigen::VectorXd residual = backend::ComputeVisualResidual(
           rigid_ic_.translation(), rigid_ic_.so3().matrix(), Ps[imu_i], Rs[imu_i], Ps[imu_j],
-          Rs[imu_j], inv_depth_i, pt_1, pt_2, &(jacobians[0]), &(jacobians[1]),
-          ESTIMATE_EXTRINSIC ? &(jacobians[2]) : nullptr, &(jacobians[3]), &residual);
+          Rs[imu_j], inv_depth_i, pt_1, pt_2);
 
-      // update robust loss fcn
-      double drho;
-      Eigen::MatrixXd robust_info;
-      backend::RobustInformation(*loss_fcn_.get(), information, project_sqrt_info_, residual, &drho,
-                                 &robust_info);
-
-      // add to the final hessian matrix
-      UpdateProblemMatrix(jacobians, indices, dimensions, residual, robust_info, drho,
-                          &marginalization_matrix, &marginalization_vec);
+      if (residual.squaredNorm() > threshold) {
+        inlier_end = i;
+        break;
+      }
     }
-  }
-  CHECK_EQ(landmark_id, marg_landmark_size);
 
-  // solve the marginalization problem
-  {
-    MatXX Hmm =
-        marginalization_matrix.block(pose_dim, pose_dim, marg_landmark_size, marg_landmark_size);
-    MatXX Hpm = marginalization_matrix.block(0, pose_dim, pose_dim, marg_landmark_size);
-    MatXX Hmp = marginalization_matrix.block(pose_dim, 0, marg_landmark_size, pose_dim);
-    VecX bpp = marginalization_vec.segment(0, pose_dim);
-    VecX bmm = marginalization_vec.segment(pose_dim, marg_landmark_size);
-
-    // use sparse matrix to accelerate and save memory
-    // tutorial : https://eigen.tuxfamily.org/dox/group__TutorialSparse.html
-    // as for vins system, we use inverse depth, each vertex will only have one value
-    // we will reserve the space for memory savage
-    Eigen::SparseMatrix<double> Hmm_inv(marg_landmark_size, marg_landmark_size);
-    Hmm_inv.reserve(Eigen::VectorXi::Constant(marg_landmark_size, 1));
-    for (int i = 0; i < marg_landmark_size; i++) {
-      Hmm_inv.insert(i, i) = 1.0 / Hmm(i, i);
+    if (inlier_end < 3) {
+      it_per_id.solve_flag = 2;
+      outlier_cnt++;
+    } else {
+      inlier_cnt++;
     }
-    Hmm_inv.makeCompressed();
 
-    MatXX tempH = Hpm * Hmm_inv;
-    Hprior_ = marginalization_matrix.block(0, 0, pose_dim, pose_dim) - tempH * Hmp + Hprior_;
-    bprior_ = bpp - tempH * bmm + bprior_;
+    it_per_id.feature_per_frame.resize(inlier_end);
   }
-
-  backend::MarginalizeFrameInternal(6, 15, &Hprior_, &bprior_, &errprior_, &Jprior_inv_);
-
-  if (!ESTIMATE_EXTRINSIC) {
-    Hprior_.block(0, 0, 6, Hprior_.cols()).setZero();
-    Hprior_.block(0, 0, Hprior_.rows(), 6).setZero();
-    bprior_.segment(0, 6).setZero();
-  }
-}
-
-void Estimator::ExtendedPrior(int dim) {
-  int size = Hprior_.rows() + dim;
-  Hprior_.conservativeResize(size, size);
-  bprior_.conservativeResize(size);
-  bprior_.tail(dim).setZero();
-  Hprior_.rightCols(dim).setZero();
-  Hprior_.bottomRows(dim).setZero();
-}
-
-void Estimator::MargNewFrame() {
-  // if we marginalize the new frame, no map point observation shall be marginalized.
-  if (Hprior_.rows() > 0) {
-    ExtendedPrior(15);
-  } else {
-    int pose_dim = feature::WINDOW_SIZE * 15 + 6;
-    Hprior_ = MatXX(pose_dim, pose_dim);
-    Hprior_.setZero();
-    bprior_ = VecX(pose_dim);
-    bprior_.setZero();
-  }
-  backend::MarginalizeFrameInternal(6 + (feature::WINDOW_SIZE - 1) * 15, 15, &Hprior_, &bprior_,
-                                    &errprior_, &Jprior_inv_);
-  if (!ESTIMATE_EXTRINSIC) {
-    Hprior_.block(0, 0, 6, Hprior_.cols()).setZero();
-    Hprior_.block(0, 0, Hprior_.rows(), 6).setZero();
-    bprior_.segment(0, 6).setZero();
-  }
+  return std::make_pair(outlier_cnt, inlier_cnt);
 }
 
 // TODO(yeliu) : refine using :
 // github.com/ceres-solver/ceres-solver/blob/master/internal/ceres/trust_region_minimizer.cc#L415
-double Estimator::ComputeCurrentLoss() {
+double Estimator::ComputeCurrentLoss(std::vector<double>* sqr_residuals) {
   double total_lost = 0;
+  sqr_residuals->clear();
   // for imu factors
   for (int i = 0; i < feature::WINDOW_SIZE; i++) {
     int j = i + 1;
@@ -213,6 +68,15 @@ double Estimator::ComputeCurrentLoss() {
     const Eigen::Vector3d& pt_1 = it_per_id.feature_per_frame[0].point;
     double inv_depth_i = 1.0 / it_per_id.estimated_depth;
 
+    if (inv_depth_i < 0) continue;
+
+    if (it_per_id.depth_gt.has_value()) {
+      // add inverse depth ground truth value factor
+      double inv_depth_gt = 1.0 / it_per_id.depth_gt.value();
+      double residual = inv_depth_i - inv_depth_gt;
+      total_lost += residual * residual * depth_weight_;
+    }
+
     for (size_t i = 1; i < it_per_id.feature_per_frame.size(); i++) {
       const Eigen::Vector3d& pt_2 = it_per_id.feature_per_frame[i].point;
       int imu_j = imu_i + i;
@@ -220,6 +84,7 @@ double Estimator::ComputeCurrentLoss() {
           rigid_ic_.translation(), rigid_ic_.so3().matrix(), Ps[imu_i], Rs[imu_i], Ps[imu_j],
           Rs[imu_j], inv_depth_i, pt_1, pt_2);
 
+      sqr_residuals->emplace_back(residual.squaredNorm());
       // update robust loss fcn
       double cost = residual.transpose() * vis_information * residual;
       total_lost += loss_fcn_->Compute(cost)[0];
@@ -301,13 +166,13 @@ Estimator::States Estimator::UpdateStates(const Eigen::VectorXd& delta_x) {
     backup.depths.emplace_back(it_per_id.estimated_depth);
     double delta = delta_x(idx++);
 
-    if (!isfinite(delta) || delta > 1e3) continue;
+    if (!isfinite(delta) || delta > 1e7) continue;
     double inv_depth = 1.0 / it_per_id.estimated_depth;
     it_per_id.estimated_depth = 1.0 / (inv_depth + delta);
   }
 
   // update prior
-  if (errprior_.rows() > 0) {
+  if (valid_prior_) {
     /// update with first order Taylor, b' = b + \frac{\delta b}{\delta x} * \delta x
     /// \delta x = Computes the linearized deviation from the references (linearization points)
     bprior_ -= Hprior_ * delta_x.head(pose_dim);
@@ -339,8 +204,8 @@ Estimator::ProblemMeta Estimator::MakeProblem(int landmark_size) {
                                 pre_integrations[j], &(jacobians[0]), &(jacobians[1]),
                                 &(jacobians[2]), &(jacobians[3]), &residual);
     Eigen::MatrixXd information = pre_integrations[j]->covariance.inverse();
-    UpdateProblemMatrix(jacobians, indices, dimensions, residual, information, 1.0, &h_matrix,
-                        &b_vec);
+    UpdateProblemMatrix(jacobians, indices, dimensions, residual, information, information, 1.0,
+                        &h_matrix, &b_vec);
     total_lost += residual.transpose() * information * residual;
   }
 
@@ -348,7 +213,7 @@ Estimator::ProblemMeta Estimator::MakeProblem(int landmark_size) {
   // make the problem hessian
   Eigen::MatrixXd vis_information = project_sqrt_info_.transpose() * project_sqrt_info_;
 
-  int idx_feature = pose_dim;
+  int idx_feature = pose_dim - 1;
 
   Eigen::VectorXd residual;
   std::vector<Eigen::MatrixXd> jacobians(4);
@@ -361,6 +226,20 @@ Estimator::ProblemMeta Estimator::MakeProblem(int landmark_size) {
     int idx_i = imu_i * 15 + 6;
     const Eigen::Vector3d& pt_1 = it_per_id.feature_per_frame[0].point;
     double inv_depth_i = 1.0 / it_per_id.estimated_depth;
+
+    idx_feature++;
+    if (inv_depth_i < 0) {
+      continue;
+    }
+
+    if (it_per_id.depth_gt.has_value()) {
+      // add inverse depth ground truth value factor
+      double inv_depth_gt = 1.0 / it_per_id.depth_gt.value();
+      double residual = inv_depth_i - inv_depth_gt;
+      // jacobian is identity
+      h_matrix(idx_feature, idx_feature) += depth_weight_;
+      b_vec(idx_feature) -= depth_weight_ * residual;
+    }
 
     for (size_t i = 1; i < it_per_id.feature_per_frame.size(); i++) {
       const Eigen::Vector3d& pt_2 = it_per_id.feature_per_frame[i].point;
@@ -379,35 +258,34 @@ Estimator::ProblemMeta Estimator::MakeProblem(int landmark_size) {
                                                project_sqrt_info_, residual, &drho, &robust_info);
 
       // add to the final hessian matrix
-      UpdateProblemMatrix(jacobians, indices, dimensions, residual, robust_info, drho, &h_matrix,
-                          &b_vec);
+      UpdateProblemMatrix(jacobians, indices, dimensions, residual, vis_information, robust_info,
+                          drho, &h_matrix, &b_vec);
     }
-    idx_feature++;
   }
 
   // add prior
   int prior_dim = Hprior_.cols();
-  if (prior_dim > 0) {
+  if (valid_prior_) {
     h_matrix.topLeftCorner(prior_dim, prior_dim) += Hprior_;
     b_vec.head(prior_dim) += bprior_;
   }
 
-  // update lm parameter
   if (errprior_.rows() > 0) total_lost += errprior_.norm();
   total_lost *= 0.5;
 
   return Estimator::ProblemMeta{total_lost, h_matrix, b_vec};
 }
 
-bool Estimator::SolveProblem(const Estimator::ProblemMeta& problem_meta, double lambda,
-                             Eigen::VectorXd* delta_x) {
+bool SolveProblem(const Estimator::ProblemMeta& problem_meta, double lambda,
+                  Eigen::VectorXd* delta_x) {
   static int pose_dim = (feature::WINDOW_SIZE + 1) * 15 + 6;
   int marg_size = problem_meta.h_matrix.cols() - pose_dim;
-  Eigen::MatrixXd Hmm = problem_meta.h_matrix.block(pose_dim, pose_dim, marg_size, marg_size);
-  Eigen::MatrixXd Hpm = problem_meta.h_matrix.block(0, pose_dim, pose_dim, marg_size);
-  Eigen::MatrixXd Hmp = problem_meta.h_matrix.block(pose_dim, 0, marg_size, pose_dim);
-  Eigen::VectorXd bpp = problem_meta.b_vec.segment(0, pose_dim);
-  Eigen::VectorXd bmm = problem_meta.b_vec.segment(pose_dim, marg_size);
+  const Eigen::MatrixXd& Hmm =
+      problem_meta.h_matrix.block(pose_dim, pose_dim, marg_size, marg_size);
+  const Eigen::MatrixXd& Hpm = problem_meta.h_matrix.block(0, pose_dim, pose_dim, marg_size);
+  const Eigen::MatrixXd& Hmp = problem_meta.h_matrix.block(pose_dim, 0, marg_size, pose_dim);
+  const Eigen::VectorXd& bpp = problem_meta.b_vec.segment(0, pose_dim);
+  const Eigen::VectorXd& bmm = problem_meta.b_vec.segment(pose_dim, marg_size);
 
   Eigen::SparseMatrix<double> Hmm_inv(marg_size, marg_size);
   Hmm_inv.reserve(Eigen::VectorXi::Constant(marg_size, 1));
@@ -421,7 +299,7 @@ bool Estimator::SolveProblem(const Estimator::ProblemMeta& problem_meta, double 
   Eigen::VectorXd b_pp_schur = bpp - tempH * bmm;
 
   for (int i = 0; i < pose_dim; i++) {
-    H_pp_schur(i, i) += lambda;  // LM Method
+    H_pp_schur(i, i) += lambda;
   }
   // solve Hpp * delta_x = bpp
   Eigen::VectorXd delta_x_pp = H_pp_schur.ldlt().solve(b_pp_schur);
@@ -433,11 +311,10 @@ bool Estimator::SolveProblem(const Estimator::ProblemMeta& problem_meta, double 
   delta_x->head(pose_dim) = delta_x_pp;
   delta_x->tail(marg_size) = delta_x_ll;
 
-  // return isfinite(delta_x->squaredNorm());
-  return true;
+  return isfinite(delta_x->squaredNorm());
 }
 
-double Estimator::ComputeInitialLambda(const Estimator::ProblemMeta& problem) {
+double ComputeInitialLambda(const Estimator::ProblemMeta& problem) {
   double max_diagonal = 0;
   for (int i = 0; i < problem.h_matrix.cols(); ++i) {
     max_diagonal = std::max(fabs(problem.h_matrix(i, i)), max_diagonal);
@@ -446,11 +323,9 @@ double Estimator::ComputeInitialLambda(const Estimator::ProblemMeta& problem) {
   return 1e-5 * max_diagonal;
 }
 
-bool Estimator::IsGoodStep(const Estimator::ProblemMeta& problem, const Eigen::VectorXd& delta_x,
-                           double last_lost, double* lambda, double* ni) {
+bool IsGoodStep(const Estimator::ProblemMeta& problem, const Eigen::VectorXd& delta_x,
+                double current_loss, double last_lost, double* lambda, double* ni) {
   double scale = 0.5 * delta_x.transpose() * ((*lambda) * delta_x + problem.b_vec) + 1e-6;
-  double current_loss = ComputeCurrentLoss();
-
   double rho = (last_lost - current_loss) / scale;
   if (rho > 0 && isfinite(current_loss)) {
     // last step was good
@@ -467,34 +342,40 @@ bool Estimator::IsGoodStep(const Estimator::ProblemMeta& problem, const Eigen::V
   }
 }
 
-void Estimator::OptimizeSlideWindow(int max_num_iterations) {
+double Estimator::OptimizeSlideWindow(int max_num_iterations, bool veb) {
   TicToc t_solve;
 
   int landmark_size = 0;
+  int pt_has_gt = 0;
   for (auto& it_per_id : f_manager.feature) {
     if (!it_per_id.Valid()) continue;
     landmark_size++;
+    pt_has_gt += (it_per_id.depth_gt.has_value());
   }
+
+  LOG_IF(INFO, verbose_) << "landmark points : " << pt_has_gt << "/" << landmark_size;
 
   ProblemMeta problem = MakeProblem(landmark_size);
   double lambda = ComputeInitialLambda(problem);
   double ni = 2.0;
   double last_cost = problem.total_lost;
+  std::vector<double> sqr_residuals;
 
-  if (verbose_) {
+  if (verbose_ && veb) {
     std::printf(" | %10s | %13s | %13s | %13s |\n", "Iteration", "Residual", "Norm Dx", "Lambda");
     std::printf(" | %10d | %13.6f | %13.6f | %13.6f |\n", -1, last_cost, 0., lambda);
   }
   for (int iter = 0; iter < max_num_iterations; iter++) {
     Eigen::VectorXd delta_x;
     for (int lm_try = 0; lm_try < 8; lm_try++) {
-      // if (!SolveProblem(problem, lambda, &delta_x)) {
-      //   ComputeInitialLambda(problem);
-      //   continue;
-      // }
-      SolveProblem(problem, lambda, &delta_x);
+      if (!SolveProblem(problem, lambda, &delta_x)) {
+        ComputeInitialLambda(problem);
+        continue;
+      }
+      // SolveProblem(problem, lambda, &delta_x);
       States backup_state = UpdateStates(delta_x);
-      if (IsGoodStep(problem, delta_x, last_cost, &lambda, &ni)) {
+      double current_loss = ComputeCurrentLoss(&sqr_residuals);
+      if (IsGoodStep(problem, delta_x, current_loss, last_cost, &lambda, &ni)) {
         break;
       }
       // it was a bad update roll back to previous state
@@ -504,36 +385,73 @@ void Estimator::OptimizeSlideWindow(int max_num_iterations) {
     problem = MakeProblem(landmark_size);
     double dx_norm = delta_x.norm();
 
-    if (verbose_) {
+    if (verbose_ && veb) {
       std::printf(" | %10d | %13.6f | %13.6f | %13.6f |\n", iter, problem.total_lost, dx_norm,
                   lambda);
     }
-
-    // if the current residual improvement too small or maybe the linear system solved failed
     if (last_cost - problem.total_lost < 1e-6) {
-      if (verbose_) {
-        std::cout << " [LM STOP] the residual reduce too less (< 1e-6)" << std::endl;
-      }
+      LOG_IF(INFO, verbose_) << " [LM STOP] the residual reduce too less (< 1e-6)";
       break;
     }
     last_cost = problem.total_lost;
   }
-  if (verbose_) {
-    std::cout << " [LM FINISH]  problem solve cost: " << t_solve.toc() << " ms" << std::endl;
-  }
+  LOG_IF(INFO, verbose_) << " [LM FINISH]  problem solve cost: " << t_solve.toc() << " ms";
+
+  return 1e-4;
+  CHECK(!sqr_residuals.empty());
+  std::sort(sqr_residuals.begin(), sqr_residuals.end());
+  return sqr_residuals[0.9 * sqr_residuals.size()];
 }
 
-void Estimator::BackendOptimization() {
-  OptimizeSlideWindow(NUM_ITERATIONS);
+int Estimator::BackendOptimization() {
+  Eigen::Matrix3d rot_0 = Rs[0];
+  Eigen::Vector3d pos_0 = Ps[0];
+
+  double sqr_residual = OptimizeSlideWindow(NUM_ITERATIONS, false);
+
+  // the optimization may move the first frame a lot
+  // move the first frame towards its origin position
+  {
+    Eigen::Vector3d pos_0_new = Ps[0];
+
+    // as the optimization may change the pose of all the frames (even though we have prior)
+    // if the first frames pose changed, this will lead to the system random walk behaviour
+    // to solve this, we calculate the difference between the first frame pose before and
+    // after the optimization, then propragate it to all other window frames
+    //      the system has one rotation DOF and three poisition DOF
+    Eigen::Matrix3d rot_diff = Eigen::Matrix3d::Identity();
+    if (false) {
+      Eigen::Vector3d euler_0 = backend::Utility::R2ypr(rot_0);
+      Eigen::Vector3d euler_0_new = backend::Utility::R2ypr(Rs[0]);
+      double y_diff = euler_0.x() - euler_0_new.x();
+      rot_diff = backend::Utility::ypr2R(Vector3d(y_diff, 0, 0));
+      if (abs(abs(euler_0.y()) - 90.0) < 1.0 || abs(abs(euler_0_new.y()) - 90.0) < 1.0) {
+        rot_diff = rot_0 * Rs[0].transpose();
+      }
+    }
+    for (int i = 0; i <= feature::WINDOW_SIZE + 1; i++) {
+      Rs[i] = rot_diff * Rs[i];
+      Ps[i] = rot_diff * (Ps[i] - pos_0_new) + pos_0;
+      Vs[i] = rot_diff * Vs[i];
+    }
+  }
 
   if (marginalization_flag == MARGIN_OLD) {
     MargOldFrame();
-  } else {
-    // if have prior
-    if (Hprior_.rows() > 0) {
-      MargNewFrame();
-    }
+  } else if (valid_prior_) {
+    MargNewFrame();
   }
+
+  // repropagate
+  // for (int i = 1; i <= feature::WINDOW_SIZE; i++) {
+  //   pre_integrations[i]->repropagate(Bas[i], Bgs[i - 1]);
+  // }
+  return 100;
+
+  double threshold = std::max(1e-3, sqr_residual);
+  auto outlier_inlier = RejectOutliers(threshold);
+  LOG_IF(INFO, verbose_) << "reject outlier " << outlier_inlier.first << " with threshold " << threshold;
+  return outlier_inlier.second;
 }
 
 }  // namespace vins

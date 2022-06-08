@@ -44,12 +44,12 @@ bool Estimator::InitialStructure() {
   Vector3d relative_T;
   int l;
   if (!relativePose(relative_R, relative_T, l)) {
-    cout << "Not enough features or parallax; Move device around" << endl;
+    LOG_IF(WARNING, verbose_) << "[VINS] Not enough features or parallax; Move device around";
     return false;
   }
   GlobalSFM sfm;
   if (!sfm.construct(frame_count + 1, Q, T, l, relative_R, relative_T, sfm_f, sfm_tracked_points)) {
-    cout << "global SFM failed!" << endl;
+    LOG_IF(WARNING, verbose_) << "[VINS] global SFM failed!";
     marginalization_flag = MARGIN_OLD;
     return false;
   }
@@ -131,7 +131,7 @@ bool Estimator::VisualInitialAlign() {
   }
 
   f_manager.ClearDepth();
-  f_manager.triangulate(Ps, rigid_ic_.translation(), rigid_ic_.so3().matrix());
+  f_manager.Triangulate(Ps, rigid_ic_.translation(), rigid_ic_.so3().matrix());
 
   Eigen::Vector3d offset_trans = scale * Ps[0] - Rs[0] * rigid_ic_.translation();
   for (int i = 0; i <= frame_count; i++) {
@@ -142,8 +142,7 @@ bool Estimator::VisualInitialAlign() {
   }
 
   for (auto& it_per_id : f_manager.feature) {
-    it_per_id.used_num = it_per_id.feature_per_frame.size();
-    if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < feature::WINDOW_SIZE - 2)) continue;
+    if (!it_per_id.Valid()) continue;
     it_per_id.estimated_depth *= scale;
   }
 

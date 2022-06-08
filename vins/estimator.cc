@@ -4,21 +4,16 @@
 namespace vins {
 
 Estimator::Estimator(bool verbose)
-    : verbose_(verbose), loss_fcn_(std::make_shared<backend::HuberLoss>(0.2)), f_manager{Rs} {
+    : verbose_(verbose), loss_fcn_(std::make_shared<backend::HuberLoss>(0.5)), f_manager{Rs} {
   LOG(INFO) << "[ESTIMATOR] initialized.";
   ClearState(true);
 }
 
 void Estimator::SetParameter(const Sophus::SO3d& ric, const Eigen::Vector3d& tic) {
-  Quaterniond q_ic = ric.unit_quaternion();
-  vPic[0] << tic(0), tic(1), tic(2), q_ic.x(), q_ic.y(), q_ic.z(), q_ic.w();
   rigid_ic_ = Sophus::SE3d(ric, tic);
   project_sqrt_info_ = 600.0 / 1.5 * Matrix2d::Identity();
 }
 
-//  BASTIAN_M : some time the pointer will not be nullptr when initialize,
-//          which will lead to segmentation error.
-//          so I fix the error by adding a flag for initialize.
 void Estimator::ClearState(bool bInit) {
   for (int i = 0; i < feature::WINDOW_SIZE + 1; i++) {
     Rs[i].setIdentity();
@@ -56,8 +51,8 @@ void Estimator::ClearState(bool bInit) {
     if (tmp_pre_integration != nullptr) delete tmp_pre_integration;
   }
   tmp_pre_integration = nullptr;
-  last_marginalization_parameter_blocks.clear();
   f_manager.ClearState();
+  valid_prior_ = false;
 
   all_map_points_.clear();
   failure_occur = 0;
@@ -120,9 +115,7 @@ void Estimator::ProcessImage(
         SolveOdometry();
         slideWindow();
         f_manager.removeFailures();
-        std::cout << "==> Initialization finish!" << endl;
-        last_R = Rs[feature::WINDOW_SIZE];
-        last_P = Ps[feature::WINDOW_SIZE];
+        LOG(INFO) << "==> Initialization finish!";
       } else {
         slideWindow();
       }
@@ -130,21 +123,15 @@ void Estimator::ProcessImage(
       frame_count++;
     }
   } else {
-    SolveOdometry();
-
-    if (failureDetection()) {
+    if (FailureDetection(SolveOdometry())) {
       LOG(ERROR) << "Failure Occur!";
       failure_occur = 1;
       ClearState();
       return;
     }
 
-    // TicToc t_margin;
     slideWindow();
     f_manager.removeFailures();
-
-    last_R = Rs[feature::WINDOW_SIZE];
-    last_P = Ps[feature::WINDOW_SIZE];
   }
 }
 
@@ -170,22 +157,30 @@ bool Estimator::relativePose(Matrix3d& relative_R, Vector3d& relative_T, int& l)
   return false;
 }
 
-void Estimator::SolveOdometry() {
-  if (frame_count < feature::WINDOW_SIZE) return;
-  if (solver_flag == NON_LINEAR) {
-    f_manager.triangulate(Ps, rigid_ic_.translation(), rigid_ic_.so3().matrix());
-    BackendOptimization();
-  }
+int Estimator::SolveOdometry() {
+  CHECK_EQ(solver_flag, NON_LINEAR);
+  CHECK_EQ(frame_count, feature::WINDOW_SIZE);
+  f_manager.Triangulate(Ps, rigid_ic_.translation(), rigid_ic_.so3().matrix());
+  return BackendOptimization();
 }
 
-bool Estimator::failureDetection() {
-  if (f_manager.last_track_num < 2) return true;
-  if (Bas[feature::WINDOW_SIZE].squaredNorm() > 5.0) return true;
-  if (Bgs[feature::WINDOW_SIZE].squaredNorm() > 1.0) return true;
-  if ((Ps[feature::WINDOW_SIZE] - last_P).squaredNorm() > 25) return true;
-  if (abs(Ps[feature::WINDOW_SIZE].z() - last_P.z()) > 1) return true;
-  Quaterniond delta_Q(Rs[feature::WINDOW_SIZE].transpose() * last_R);
-  if (acos(delta_Q.w()) * 2.0 / 3.14 * 180.0 > 50) return true;
+bool Estimator::FailureDetection(int tracking_cnt) {
+  if (tracking_cnt < 10) {
+    LOG(ERROR) << "too few optimization inliers : " << tracking_cnt;
+    return true;
+  }
+  if (f_manager.last_track_num < 2) {
+    LOG(ERROR) << "too few track pts : " << f_manager.last_track_num;
+    return true;
+  }
+  if (Bas[feature::WINDOW_SIZE].squaredNorm() > 5.0) {
+    LOG(ERROR) << "too large Ba : " << Bas[feature::WINDOW_SIZE].transpose();
+    return true;
+  }
+  if (Bgs[feature::WINDOW_SIZE].squaredNorm() > 1.0) {
+    LOG(ERROR) << "too large Bg : " << Bgs[feature::WINDOW_SIZE].transpose();
+    return true;
+  }
   return false;
 }
 

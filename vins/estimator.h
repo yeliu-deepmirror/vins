@@ -37,7 +37,7 @@ class Estimator {
   bool VisualInitialAlign();
   bool relativePose(Matrix3d& relative_R, Vector3d& relative_T, int& l);
   void slideWindow();
-  void SolveOdometry();
+  int SolveOdometry();
   void slideWindowNew();
   void slideWindowOld(const Eigen::Matrix3d& back_R0, const Eigen::Vector3d& back_P0);
 
@@ -59,24 +59,20 @@ class Estimator {
     Eigen::VectorXd errprior;
     std::vector<double> depths;
   };
-  double ComputeCurrentLoss();
+  std::pair<int, int> RejectOutliers(double threshold);
+  double ComputeCurrentLoss(std::vector<double>* sqr_residuals);
   ProblemMeta MakeProblem(int landmark_size);
-  bool SolveProblem(const ProblemMeta& problem_meta, double lambda, Eigen::VectorXd* delta_x);
   States UpdateStates(const Eigen::VectorXd& delta_x);
   void RollbackStates(const States& states);
+  double OptimizeSlideWindow(int max_num_iterations, bool veb = false);
 
-  double ComputeInitialLambda(const ProblemMeta& problem);
-  bool IsGoodStep(const ProblemMeta& problem, const Eigen::VectorXd& delta_x, double last_lost,
-                  double* lambda, double* ni);
-  void OptimizeSlideWindow(int max_num_iterations);
-
-  void BackendOptimization();
+  int BackendOptimization();
 
   // for marginalization
   void MargOldFrame();
   void MargNewFrame();
 
-  bool failureDetection();
+  bool FailureDetection(int tracking_cnt);
 
   enum SolverFlag { INITIAL, NON_LINEAR };
 
@@ -87,6 +83,8 @@ class Estimator {
 
   //////////////// OUR SOLVER ///////////////////
   std::shared_ptr<backend::LossFunction> loss_fcn_;
+
+  bool valid_prior_ = false;
   MatXX Hprior_;
   VecX bprior_;
   VecX errprior_;
@@ -99,29 +97,21 @@ class Estimator {
   SolverFlag solver_flag;
   MarginalizationFlag marginalization_flag;
   Vector3d g;
-  MatrixXd Ap[2], backup_A;
-  VectorXd bp[2], backup_b;
 
-  Vec7 vPic[feature::NUM_OF_CAM];
   Sophus::SE3d rigid_ic_;
-
+  int64_t Headers[(feature::WINDOW_SIZE + 1)];
   Vector3d Ps[(feature::WINDOW_SIZE + 1)];
   Vector3d Vs[(feature::WINDOW_SIZE + 1)];
   Matrix3d Rs[(feature::WINDOW_SIZE + 1)];
   Vector3d Bas[(feature::WINDOW_SIZE + 1)];
   Vector3d Bgs[(feature::WINDOW_SIZE + 1)];
-  VectorXd vInverseDepth;
-
-  Matrix3d last_R;
-  Vector3d last_P;
-  int64_t Headers[(feature::WINDOW_SIZE + 1)];
 
   backend::IntegrationBase* pre_integrations[(feature::WINDOW_SIZE + 1)];
   Vector3d acc_0, gyr_0;
 
-  vector<double> dt_buf[(feature::WINDOW_SIZE + 1)];
-  vector<Vector3d> linear_acceleration_buf[(feature::WINDOW_SIZE + 1)];
-  vector<Vector3d> angular_velocity_buf[(feature::WINDOW_SIZE + 1)];
+  std::vector<double> dt_buf[(feature::WINDOW_SIZE + 1)];
+  std::vector<Eigen::Vector3d> linear_acceleration_buf[(feature::WINDOW_SIZE + 1)];
+  std::vector<Eigen::Vector3d> angular_velocity_buf[(feature::WINDOW_SIZE + 1)];
 
   int frame_count;
 
@@ -131,13 +121,16 @@ class Estimator {
   bool first_imu;
   bool failure_occur;
 
-  // MarginalizationInfo *last_marginalization_info;
-  vector<double*> last_marginalization_parameter_blocks;
-
   std::map<int64_t, backend::ImageFrame> all_image_frame;
   backend::IntegrationBase* tmp_pre_integration;
-
   std::map<uint64_t, Eigen::Vector3d> all_map_points_;
+
+  double depth_weight_ = 100.0;
 };
 
+void UpdateProblemMatrix(const std::vector<Eigen::MatrixXd>& jacobians,
+                         const std::vector<int>& indices, const std::vector<int>& dimensions,
+                         const Eigen::VectorXd& residual, const Eigen::MatrixXd& information,
+                         const Eigen::MatrixXd& robust_information, double drho,
+                         Eigen::MatrixXd* h_mat, Eigen::VectorXd* b_vec);
 }  // namespace vins

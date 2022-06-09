@@ -78,7 +78,7 @@ bool System::PublishImageData(int64_t timestamp, cv::Mat& img, cv::Mat& depth) {
   if (estimator_.solver_flag != Estimator::SolverFlag::NON_LINEAR) return false;
 
   // update frame poses
-  for (int i = 0; i < WINDOW_SIZE + 1; i++) {
+  for (int i = 0; i < feature::WINDOW_SIZE + 1; i++) {
     Eigen::Matrix3d rot = estimator_.Rs[i] * estimator_.rigid_ic_.so3().matrix();
     Eigen::Vector3d trans =
         estimator_.Rs[i] * estimator_.rigid_ic_.translation() + estimator_.Ps[i];
@@ -94,7 +94,7 @@ void System::ShowTrack(cv::Mat* image) {
   }
   const auto& pixels = feature_tracker_.vCurPts;
   for (unsigned int j = 0; j < pixels.size(); j++) {
-    double len = min(1.0, 1.0 * feature_tracker_.vTrackCnt[j] / WINDOW_SIZE);
+    double len = min(1.0, 1.0 * feature_tracker_.vTrackCnt[j] / feature::WINDOW_SIZE);
     cv::circle(*image, pixels[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len), 2);
   }
 }
@@ -157,7 +157,7 @@ void System::Draw() {
     glBegin(GL_POINTS);
     if (estimator_.solver_flag == Estimator::SolverFlag::NON_LINEAR) {
       glColor3f(1, 0, 0);
-      for (int i = 0; i < WINDOW_SIZE + 1; ++i) {
+      for (int i = 0; i < feature::WINDOW_SIZE + 1; ++i) {
         Eigen::Vector3d& p_wi = estimator_.Ps[i];
         glVertex3d(p_wi[0], p_wi[1], p_wi[2]);
       }
@@ -165,25 +165,9 @@ void System::Draw() {
 
     if (menuShowMarPoints) {
       glColor3f(0, 0, 0);
-      int margalized_size = estimator_.margin_cloud_cloud.size();
-      for (int i = 0; i < margalized_size - 1; i++) {
-        for (auto& p_wi : estimator_.margin_cloud_cloud[i]) {
-          glVertex3d(p_wi[0], p_wi[1], p_wi[2]);
-        }
-      }
-      glColor3f(1, 0, 0);
-      if (margalized_size > 0) {
-        for (auto& p_wi : estimator_.margin_cloud_cloud[margalized_size - 1]) {
-          glVertex3d(p_wi[0], p_wi[1], p_wi[2]);
-        }
-      }
-    }
-
-    // map points currently seen
-    if (menuShowCurPoints) {
-      glColor3f(0, 1, 0);
-      for (Vec3 p_wi : estimator_.point_cloud) {
-        glVertex3d(p_wi[0], p_wi[1], p_wi[2]);
+      for (auto& iter : estimator_.all_map_points_) {
+        auto& pt = iter.second;
+        glVertex3d(pt[0], pt[1], pt[2]);
       }
     }
     glEnd();

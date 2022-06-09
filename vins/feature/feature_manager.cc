@@ -35,7 +35,7 @@ bool FeatureManager::AddFeatureCheckParallax(
       if (pt_cam(2) > 0.1) {
         // we have good depth initialization (maybe from other sensor)
         it->estimated_depth = pt_cam(2);
-        // it->solve_flag = 3;
+        it->inv_depth_gt_ = 1.0 / pt_cam(2);
       }
     } else {
       last_track_num++;
@@ -79,9 +79,6 @@ void FeatureManager::SetDepth(const Eigen::VectorXd& x) {
     it_per_id.used_num = it_per_id.feature_per_frame.size();
     if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2)) continue;
     double depth = 1.0 / x(feature_index++);
-
-    if (it_per_id.solve_flag == 3) continue;
-
     it_per_id.estimated_depth = depth;
     if (it_per_id.estimated_depth < 0) {
       it_per_id.solve_flag = 2;

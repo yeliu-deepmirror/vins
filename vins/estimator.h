@@ -14,6 +14,7 @@
 #include "vins/backend/vertex/vertex_speedbias.h"
 
 #include "vins/backend/edge/edge_imu.h"
+#include "vins/backend/edge/edge_prior.h"
 #include "vins/backend/edge/edge_reprojection.h"
 
 #include "vins/parameters.h"
@@ -36,8 +37,6 @@ class Estimator {
   // original VINS interface for image (which support stereo camera)
   void ProcessImage(const std::map<int, std::vector<std::pair<int, Eigen::Vector3d>>>& image,
                     int64_t header);
-
-  Eigen::Matrix<double, 3, 4> GetCurrentCameraPose();
 
   // internal
   void ClearState(bool bInit = false);
@@ -69,7 +68,6 @@ class Estimator {
   VecX errprior_;
   MatXX Jprior_inv_;
 
-  Eigen::Matrix2d project_sqrt_info_;
 
   //////////////// OUR SOLVER //////////////////
   SolverFlag solver_flag;
@@ -87,7 +85,6 @@ class Estimator {
   Vector3d Bas[(feature::WINDOW_SIZE + 1)];
   Vector3d Bgs[(feature::WINDOW_SIZE + 1)];
   VectorXd vInverseDepth;
-  double td;
 
   Matrix3d last_R, last_R0;
   Vector3d last_P, last_P0;
@@ -109,21 +106,14 @@ class Estimator {
   bool failure_occur;
 
   // point cloud saved
-  bool save_cloud_for_show_ = true;
-  vector<Vector3d> point_cloud;
-  vector<Vector3d> margin_cloud;
-  vector<vector<Vector3d>> margin_cloud_cloud;
-  vector<Vector3d> key_poses;
   int64_t initial_timestamp;
 
-  void SaveMarginalizedFrameHostedPoints(vins::backend::Problem& problem);
-  void UpdateCurrentPointcloud();
-
-  // MarginalizationInfo *last_marginalization_info;
-  vector<double*> last_marginalization_parameter_blocks;
-
+  std::map<int, Eigen::Vector3d> all_map_points_;
   std::map<int64_t, backend::ImageFrame> all_image_frame;
   backend::IntegrationBase* tmp_pre_integration;
+
+  Eigen::Matrix2d project_sqrt_info_;
+  Eigen::Matrix<double, 1, 1> depth_information_;
 };
 
 }  // namespace vins

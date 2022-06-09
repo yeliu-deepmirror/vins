@@ -69,5 +69,16 @@ void EdgeSE3Prior::ComputeJacobians() {
   jacobians_[0] = jacobian_pose_i;
 }
 
+void EdgeInvDepthPrior::ComputeResidual() {
+  double inv_dep = vertices_[0]->Parameters()[0];
+  residual_(0) = inv_dep - inv_depth_;
+}
+
+void EdgeInvDepthPrior::ComputeJacobians() {
+  Eigen::Matrix<double, 1, 1> jacobian;
+  jacobian << 1.0;
+  jacobians_[0] = std::move(jacobian);
+}
+
 }  // namespace backend
 }  // namespace vins

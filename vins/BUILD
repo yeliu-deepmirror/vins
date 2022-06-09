@@ -4,6 +4,9 @@ cc_library(
     name = "estimator",
     srcs = [
         "estimator.cc",
+        "estimator_marginalize.cc",
+        "estimator_initialize.cc",
+        "estimator_optimize.cc",
     ],
     hdrs = [
         "estimator.h",

@@ -36,6 +36,7 @@ class FeaturePerId {
 
   int used_num;
   double estimated_depth;
+  std::optional<double> inv_depth_gt_;
   // 0 haven't solve yet; 1 solve succ; 2 solve fail; 3 good initial
   // we good initial we will skip optimization & triangulation
   int solve_flag;

@@ -127,7 +127,7 @@ bool Estimator::VisualInitialAlign() {
   for (int i = 0; i <= frame_count; i++) {
     Ps[i] = all_image_frame[Headers[i]].T;
     Rs[i] = all_image_frame[Headers[i]].R;
-    pre_integrations[i]->repropagate(Vector3d::Zero(), Bgs[i]);
+    pre_integrations[i]->RePropagate(Vector3d::Zero(), Bgs[i]);
   }
 
   f_manager.ClearDepth();

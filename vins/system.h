@@ -12,6 +12,18 @@
 
 namespace vins {
 
+template <typename Type>
+Eigen::Vector3d ToEigen(const Type& data) {
+  return {data.x(), data.y(), data.z()};
+}
+
+template <typename Type>
+void ToProto(const Eigen::Vector3d& data, Type* proto) {
+  proto->set_x(data(0));
+  proto->set_y(data(1));
+  proto->set_z(data(2));
+}
+
 class System {
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;

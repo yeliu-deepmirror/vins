@@ -58,7 +58,7 @@ class FeatureManager {
   void ClearState();
 
   bool AddFeatureCheckParallax(
-      int frame_count,
+      int frame_count, double weight,
       const std::map<uint64_t, std::vector<std::pair<int, Eigen::Vector3d>>>& image);
   std::vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> GetCorresponding(int frame_count_l,
                                                                             int frame_count_r);

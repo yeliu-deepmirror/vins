@@ -11,7 +11,7 @@ FeatureManager::FeatureManager(Eigen::Matrix3d _Rs[]) : Rs(_Rs) {}
 void FeatureManager::ClearState() { feature.clear(); }
 
 bool FeatureManager::AddFeatureCheckParallax(
-    int frame_count,
+    int frame_count, double weight,
     const std::map<uint64_t, std::vector<std::pair<int, Eigen::Vector3d>>>& image) {
   last_track_num = 0;
   for (auto& id_pts : image) {
@@ -49,7 +49,7 @@ bool FeatureManager::AddFeatureCheckParallax(
   }
 
   if (parallax_num == 0) return true;
-  return parallax_sum / parallax_num >= MIN_PARALLAX;
+  return parallax_sum / parallax_num >= weight * MIN_PARALLAX;
 }
 
 std::vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> FeatureManager::GetCorresponding(

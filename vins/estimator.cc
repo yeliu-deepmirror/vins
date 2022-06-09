@@ -3,15 +3,15 @@
 
 namespace vins {
 
-Estimator::Estimator(bool verbose)
+Estimator::Estimator(bool verbose, double focus)
     : verbose_(verbose), loss_fcn_(std::make_shared<backend::HuberLoss>(0.5)), f_manager{Rs} {
   LOG(INFO) << "[ESTIMATOR] initialized.";
   ClearState(true);
+  project_sqrt_info_ = focus * Matrix2d::Identity();
 }
 
 void Estimator::SetParameter(const Sophus::SO3d& ric, const Eigen::Vector3d& tic) {
   rigid_ic_ = Sophus::SE3d(ric, tic);
-  project_sqrt_info_ = 600.0 / 1.5 * Matrix2d::Identity();
 }
 
 void Estimator::ClearState(bool bInit) {
@@ -94,7 +94,10 @@ void Estimator::processIMU(double dt, const Vector3d& linear_acceleration,
 
 void Estimator::ProcessImage(
     const std::map<uint64_t, std::vector<std::pair<int, Eigen::Vector3d>>>& image, int64_t header) {
-  if (f_manager.AddFeatureCheckParallax(frame_count, image)) {
+  LOG_IF(INFO, verbose_) << "==> Receive Image " << header;
+
+  // need more movement for initialization
+  if (f_manager.AddFeatureCheckParallax(frame_count, solver_flag == INITIAL ? 4.0 : 1.0, image)) {
     marginalization_flag = MARGIN_OLD;
   } else {
     marginalization_flag = MARGIN_SECOND_NEW;

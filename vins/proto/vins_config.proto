@@ -13,6 +13,12 @@ message Extrinsic {
   float qz = 7;
 }
 
+message Vector3 {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
 message VinsConfig {
   // for camera intrinsic
   int32 image_width = 1;
@@ -32,10 +38,10 @@ message VinsConfig {
   Extrinsic camera_to_imu = 12;
 
   // imu intrinisic
-  double acc_noise = 13;
-  double acc_random_walk = 14;
-  double gyr_noise = 15;
-  double gyr_random_walk = 16;
+  Vector3 acc_noise = 13;
+  Vector3 acc_random_walk = 14;
+  Vector3 gyr_noise = 15;
+  Vector3 gyr_random_walk = 16;
 
   bool verbose = 17;
   bool viz = 18;

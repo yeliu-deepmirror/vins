@@ -20,7 +20,7 @@ namespace vins {
 class Estimator {
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
-  explicit Estimator(bool verbose);
+  Estimator(bool verbose, double focus);
 
   void SetParameter(const Sophus::SO3d& ric, const Eigen::Vector3d& tic);
 
@@ -125,7 +125,7 @@ class Estimator {
   backend::IntegrationBase* tmp_pre_integration;
   std::map<uint64_t, Eigen::Vector3d> all_map_points_;
 
-  double depth_weight_ = 100.0;
+  double depth_weight_ = 10.0;
 };
 
 void UpdateProblemMatrix(const std::vector<Eigen::MatrixXd>& jacobians,

@@ -14,7 +14,7 @@ System::System(const vins::proto::VinsConfig& vins_config)
     : vins_config_(vins_config),
       feature_tracker_(vins_config.equalize(), vins_config.max_num_pts(),
                        vins_config.min_pt_distance()),
-      estimator_(vins_config_.verbose()) {
+      estimator_(vins_config_.verbose(), vins_config.fx()) {
   Eigen::Matrix<double, 6, 1> dist_coeff;
   dist_coeff << vins_config.k1(), vins_config.k2(), vins_config.p1(), vins_config.p2(),
       vins_config.k3(), 0.0;
@@ -30,17 +30,17 @@ System::System(const vins::proto::VinsConfig& vins_config)
                                                              vins_config.camera_to_imu().y(),
                                                              vins_config.camera_to_imu().z()));
   // set imu intrinsics if has valid input
-  if (vins_config.acc_noise() > 1e-10) {
-    estimator_.imu_intrinsics_.acc_noise = vins_config.acc_noise();
+  if (vins_config.has_acc_noise()) {
+    estimator_.imu_intrinsics_.acc_noise = ToEigen(vins_config.acc_noise());
   }
-  if (vins_config.gyr_noise() > 1e-10) {
-    estimator_.imu_intrinsics_.gyr_noise = vins_config.gyr_noise();
+  if (vins_config.has_gyr_noise()) {
+    estimator_.imu_intrinsics_.gyr_noise = ToEigen(vins_config.gyr_noise());
   }
-  if (vins_config.acc_random_walk() > 1e-10) {
-    estimator_.imu_intrinsics_.acc_random_walk = vins_config.acc_random_walk();
+  if (vins_config.has_acc_random_walk()) {
+    estimator_.imu_intrinsics_.acc_random_walk = ToEigen(vins_config.acc_random_walk());
   }
-  if (vins_config.gyr_random_walk() > 1e-10) {
-    estimator_.imu_intrinsics_.gyr_random_walk = vins_config.gyr_random_walk();
+  if (vins_config.has_gyr_random_walk()) {
+    estimator_.imu_intrinsics_.gyr_random_walk = ToEigen(vins_config.gyr_random_walk());
   }
   std::cout << "==> [SYSTEM] system initilize done." << endl;
 }
@@ -96,7 +96,7 @@ bool System::PublishImageData(int64_t timestamp, cv::Mat& img, cv::Mat& depth) {
   }
 
   // update frame poses
-  for (int i = 0; i < WINDOW_SIZE + 1; i++) {
+  for (int i = 0; i < feature::WINDOW_SIZE + 1; i++) {
     Eigen::Matrix3d rot = estimator_.Rs[i] * estimator_.rigid_ic_.so3().matrix();
     Eigen::Vector3d trans =
         estimator_.Rs[i] * estimator_.rigid_ic_.translation() + estimator_.Ps[i];
@@ -112,7 +112,7 @@ void System::ShowTrack(cv::Mat* image) {
   }
   const auto& pixels = feature_tracker_.vCurPts;
   for (unsigned int j = 0; j < pixels.size(); j++) {
-    double len = min(1.0, 1.0 * feature_tracker_.vTrackCnt[j] / WINDOW_SIZE);
+    double len = min(1.0, 1.0 * feature_tracker_.vTrackCnt[j] / feature::WINDOW_SIZE);
     cv::circle(*image, pixels[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len), 2);
   }
 }
@@ -175,7 +175,7 @@ void System::Draw() {
     glBegin(GL_POINTS);
     if (estimator_.solver_flag == Estimator::SolverFlag::NON_LINEAR) {
       glColor3f(1, 0, 0);
-      for (int i = 0; i < WINDOW_SIZE + 1; ++i) {
+      for (int i = 0; i < feature::WINDOW_SIZE + 1; ++i) {
         Eigen::Vector3d p_wc =
             estimator_.Rs[i] * estimator_.rigid_ic_.translation() + estimator_.Ps[i];
         glVertex3d(p_wc[0], p_wc[1], p_wc[2]);

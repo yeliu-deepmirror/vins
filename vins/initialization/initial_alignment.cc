@@ -27,7 +27,7 @@ void solveGyroscopeBias(std::map<int64_t, ImageFrame>& all_image_frame, Eigen::V
 
   for (frame_i = all_image_frame.begin(); next(frame_i) != all_image_frame.end(); frame_i++) {
     frame_j = next(frame_i);
-    frame_j->second.pre_integration->repropagate(Vector3d::Zero(), Bgs[0]);
+    frame_j->second.pre_integration->RePropagate(Vector3d::Zero(), Bgs[0]);
   }
 }
 

@@ -58,7 +58,7 @@ double Estimator::ComputeCurrentLoss(std::vector<double>* sqr_residuals) {
   }
 
   // for visual factors
-  Eigen::MatrixXd vis_information = project_sqrt_info_.transpose() * project_sqrt_info_;
+  Eigen::MatrixXd vis_information = project_sqrt_info_ * project_sqrt_info_.transpose();
 
   // for all the features
   for (auto& it_per_id : f_manager.feature) {
@@ -397,7 +397,6 @@ double Estimator::OptimizeSlideWindow(int max_num_iterations, bool veb) {
   }
   LOG_IF(INFO, verbose_) << " [LM FINISH]  problem solve cost: " << t_solve.toc() << " ms";
 
-  return 1e-4;
   CHECK(!sqr_residuals.empty());
   std::sort(sqr_residuals.begin(), sqr_residuals.end());
   return sqr_residuals[0.9 * sqr_residuals.size()];
@@ -411,29 +410,27 @@ int Estimator::BackendOptimization() {
 
   // the optimization may move the first frame a lot
   // move the first frame towards its origin position
-  {
-    Eigen::Vector3d pos_0_new = Ps[0];
+  Eigen::Vector3d pos_0_new = Ps[0];
 
-    // as the optimization may change the pose of all the frames (even though we have prior)
-    // if the first frames pose changed, this will lead to the system random walk behaviour
-    // to solve this, we calculate the difference between the first frame pose before and
-    // after the optimization, then propragate it to all other window frames
-    //      the system has one rotation DOF and three poisition DOF
-    Eigen::Matrix3d rot_diff = Eigen::Matrix3d::Identity();
-    if (false) {
-      Eigen::Vector3d euler_0 = backend::Utility::R2ypr(rot_0);
-      Eigen::Vector3d euler_0_new = backend::Utility::R2ypr(Rs[0]);
-      double y_diff = euler_0.x() - euler_0_new.x();
-      rot_diff = backend::Utility::ypr2R(Vector3d(y_diff, 0, 0));
-      if (abs(abs(euler_0.y()) - 90.0) < 1.0 || abs(abs(euler_0_new.y()) - 90.0) < 1.0) {
-        rot_diff = rot_0 * Rs[0].transpose();
-      }
+  // as the optimization may change the pose of all the frames (even though we have prior)
+  // if the first frames pose changed, this will lead to the system random walk behaviour
+  // to solve this, we calculate the difference between the first frame pose before and
+  // after the optimization, then propragate it to all other window frames
+  //      the system has one rotation DOF and three poisition DOF
+  Eigen::Matrix3d rot_diff = Eigen::Matrix3d::Identity();
+  if (true) {
+    Eigen::Vector3d euler_0 = backend::Utility::R2ypr(rot_0);
+    Eigen::Vector3d euler_0_new = backend::Utility::R2ypr(Rs[0]);
+    double y_diff = euler_0.x() - euler_0_new.x();
+    rot_diff = backend::Utility::ypr2R(Vector3d(y_diff, 0, 0));
+    if (abs(abs(euler_0.y()) - 90.0) < 1.0 || abs(abs(euler_0_new.y()) - 90.0) < 1.0) {
+      rot_diff = rot_0 * Rs[0].transpose();
     }
-    for (int i = 0; i <= feature::WINDOW_SIZE + 1; i++) {
-      Rs[i] = rot_diff * Rs[i];
-      Ps[i] = rot_diff * (Ps[i] - pos_0_new) + pos_0;
-      Vs[i] = rot_diff * Vs[i];
-    }
+  }
+  for (int i = 0; i <= feature::WINDOW_SIZE + 1; i++) {
+    Rs[i] = rot_diff * Rs[i];
+    Ps[i] = rot_diff * (Ps[i] - pos_0_new) + pos_0;
+    Vs[i] = rot_diff * Vs[i];
   }
 
   if (marginalization_flag == MARGIN_OLD) {
@@ -442,15 +439,16 @@ int Estimator::BackendOptimization() {
     MargNewFrame();
   }
 
-  // repropagate
+  // RePropagate
   // for (int i = 1; i <= feature::WINDOW_SIZE; i++) {
-  //   pre_integrations[i]->repropagate(Bas[i], Bgs[i - 1]);
+  //   pre_integrations[i]->RePropagate(Bas[i - 1], Bgs[i - 1]);
   // }
-  return 100;
+  // return 100;
 
-  double threshold = std::max(1e-3, sqr_residual);
+  double threshold = std::max(1e-2, sqr_residual);
   auto outlier_inlier = RejectOutliers(threshold);
-  LOG_IF(INFO, verbose_) << "reject outlier " << outlier_inlier.first << " with threshold " << threshold;
+  LOG_IF(INFO, verbose_) << "reject outlier " << outlier_inlier.first << " with threshold "
+                         << threshold;
   return outlier_inlier.second;
 }
 

@@ -86,7 +86,7 @@ void ComputeImuJacobian(const Eigen::Vector3d& t_w_i1, const Eigen::Quaterniond&
   CHECK(pre_integration != nullptr);
   if (residual != nullptr) {
     *residual =
-        pre_integration->evaluate(t_w_i1, r_w_i1, v1, ba1, bg1, t_w_i2, r_w_i2, v2, ba2, bg2);
+        pre_integration->Evaluate(t_w_i1, r_w_i1, v1, ba1, bg1, t_w_i2, r_w_i2, v2, ba2, bg2);
   }
   if (jaco_p1 == nullptr && jaco_sb1 == nullptr && jaco_p2 == nullptr && jaco_sb2 == nullptr) {
     return;

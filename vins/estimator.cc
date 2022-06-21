@@ -6,8 +6,8 @@
 
 namespace vins {
 
-Estimator::Estimator(bool verbose) : verbose_(verbose), f_manager{Rs} {
-  std::cout << "[ESTIMATOR] initialize. " << std::endl;
+Estimator::Estimator(bool verbose) : verbose_(verbose), gravity_(0, 0, 9.81), f_manager{Rs} {
+  LOG(INFO) << "[VINS ESTIMATOR] initialize done.";
   ClearState(true);
   depth_information_(0, 0) = 100.0;
   project_sqrt_info_ = 600.0 / 1.5 * Matrix2d::Identity();
@@ -75,7 +75,7 @@ void Estimator::processIMU(double dt, const Vector3d& linear_acceleration,
 
   if (!pre_integrations[frame_count]) {
     pre_integrations[frame_count] =
-        new backend::IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count]};
+        new backend::IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count], gravity_};
   }
 
   if (frame_count != 0) {
@@ -87,10 +87,10 @@ void Estimator::processIMU(double dt, const Vector3d& linear_acceleration,
     angular_velocity_buf[frame_count].push_back(angular_velocity);
 
     int j = frame_count;
-    Vector3d un_acc_0 = Rs[j] * (acc_0 - Bas[j]) - g;
+    Vector3d un_acc_0 = Rs[j] * (acc_0 - Bas[j]) - gravity_;
     Vector3d un_gyr = 0.5 * (gyr_0 + angular_velocity) - Bgs[j];
     Rs[j] *= backend::Utility::deltaQ(un_gyr * dt).toRotationMatrix();
-    Vector3d un_acc_1 = Rs[j] * (linear_acceleration - Bas[j]) - g;
+    Vector3d un_acc_1 = Rs[j] * (linear_acceleration - Bas[j]) - gravity_;
     Vector3d un_acc = 0.5 * (un_acc_0 + un_acc_1);
     Ps[j] += dt * Vs[j] + 0.5 * dt * dt * un_acc;
     Vs[j] += dt * un_acc;
@@ -100,20 +100,32 @@ void Estimator::processIMU(double dt, const Vector3d& linear_acceleration,
 }
 
 void Estimator::ProcessImage(
-    const std::map<int, std::vector<std::pair<int, Eigen::Vector3d>>>& image, int64_t header) {
+    const std::map<int, std::vector<std::pair<int, Eigen::Vector3d>>>& image, int64_t header,
+    const std::optional<backend::ImuState>& imu_state) {
   if (f_manager.AddFeatureCheckParallax(frame_count, image, 0.0))
     marginalization_flag = MARGIN_OLD;
   else
     marginalization_flag = MARGIN_SECOND_NEW;
 
   Headers[frame_count] = header;
+  if (solver_flag == NON_LINEAR) {
+    const auto& last_imu_state = all_image_frame[Headers[frame_count - 1]].imu_state_;
+    // set initial pose by odometry pose
+    if (imu_state.has_value() && last_imu_state.has_value()) {
+      Sophus::SE3d this_to_last = last_imu_state->pose.inverse() * imu_state->pose;
+      // set the init guess of the new frame
+      Ps[frame_count] = Ps[frame_count - 1] + Rs[frame_count - 1] * this_to_last.translation();
+      Rs[frame_count] = Rs[frame_count - 1] * this_to_last.so3().matrix();
+    }
+  }
 
   backend::ImageFrame imageframe(image, header);
   imageframe.pre_integration = tmp_pre_integration;
+  imageframe.imu_state_ = imu_state;
   all_image_frame.emplace(header, std::move(imageframe));
 
   tmp_pre_integration =
-      new backend::IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count]};
+      new backend::IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count], gravity_};
 
   if (solver_flag == INITIAL) {
     if (frame_count == feature::WINDOW_SIZE) {
@@ -127,7 +139,7 @@ void Estimator::ProcessImage(
         SolveOdometry();
         slideWindow();
         f_manager.removeFailures();
-        std::cout << "==> Initialization finish!" << endl;
+        LOG(INFO) << "[VINS] Initialization finish!";
         last_R = Rs[feature::WINDOW_SIZE];
         last_P = Ps[feature::WINDOW_SIZE];
         last_R0 = Rs[0];
@@ -219,7 +231,7 @@ void Estimator::slideWindow() {
 
       delete pre_integrations[feature::WINDOW_SIZE];
       pre_integrations[feature::WINDOW_SIZE] = new backend::IntegrationBase{
-          acc_0, gyr_0, Bas[feature::WINDOW_SIZE], Bgs[feature::WINDOW_SIZE]};
+          acc_0, gyr_0, Bas[feature::WINDOW_SIZE], Bgs[feature::WINDOW_SIZE], gravity_};
 
       dt_buf[feature::WINDOW_SIZE].clear();
       linear_acceleration_buf[feature::WINDOW_SIZE].clear();
@@ -266,7 +278,7 @@ void Estimator::slideWindow() {
 
       delete pre_integrations[feature::WINDOW_SIZE];
       pre_integrations[feature::WINDOW_SIZE] = new backend::IntegrationBase{
-          acc_0, gyr_0, Bas[feature::WINDOW_SIZE], Bgs[feature::WINDOW_SIZE]};
+          acc_0, gyr_0, Bas[feature::WINDOW_SIZE], Bgs[feature::WINDOW_SIZE], gravity_};
 
       dt_buf[feature::WINDOW_SIZE].clear();
       linear_acceleration_buf[feature::WINDOW_SIZE].clear();

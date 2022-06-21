@@ -4,7 +4,48 @@
 namespace vins {
 
 bool Estimator::InitialStructure() {
-  TicToc t_sfm;
+  // if we have lidar poses, use lidar poses to initilize the vins system
+  bool all_has_imu_state = true;
+  Eigen::Vector3d gravity_ex = gravity_;
+  for (const auto& iter : all_image_frame) {
+    if (!iter.second.imu_state_.has_value()) {
+      all_has_imu_state = false;
+      break;
+    }
+    gravity_ex = iter.second.imu_state_->gravity;
+  }
+
+  if (all_has_imu_state) {
+    // has imu state, use them to iniailize
+    LOG(INFO) << "use precompute imu state to initialize wins.";
+
+    // clear key frame in the container
+    int i = 0;
+    for (auto& iter : all_image_frame) {
+      CHECK_EQ(iter.first, Headers[i]);
+      Ps[i] = iter.second.imu_state_->pose.translation();
+      Rs[i] = iter.second.imu_state_->pose.so3().matrix();
+      Vs[i] = iter.second.imu_state_->velocity;
+      Bas[i] = iter.second.imu_state_->bias_acc;
+      Bgs[i] = iter.second.imu_state_->bias_gyr;
+      pre_integrations[i]->gravity_ = gravity_ex;
+      pre_integrations[i]->repropagate(Bas[i], Bgs[i]);
+      iter.second.is_key_frame = true;
+      i++;
+    }
+
+    // update gravity
+    gravity_ = gravity_ex;
+
+    // reset all features
+    f_manager.ClearDepth();
+
+    // triangulate all features
+    f_manager.triangulate(Ps, rigid_ic_.translation(), rigid_ic_.so3().matrix(), true);
+    f_manager.removeFailures();
+    return true;
+  }
+
   // check imu observibility
   {
     std::map<int64_t, backend::ImageFrame>::iterator frame_it;
@@ -122,7 +163,7 @@ bool Estimator::InitialStructure() {
 bool Estimator::visualInitialAlign() {
   VectorXd x;
   // solve scale
-  if (!VisualIMUAlignment(rigid_ic_.translation(), all_image_frame, Bgs, g, x)) {
+  if (!VisualIMUAlignment(rigid_ic_.translation(), all_image_frame, Bgs, gravity_, x)) {
     return false;
   }
   // change state
@@ -163,10 +204,10 @@ bool Estimator::visualInitialAlign() {
     it_per_id.estimated_depth *= s;
   }
 
-  Matrix3d R0 = backend::Utility::g2R(g);
+  Matrix3d R0 = backend::Utility::g2R(gravity_);
   double yaw = backend::Utility::R2ypr(R0 * Rs[0]).x();
   R0 = backend::Utility::ypr2R(Eigen::Vector3d{-yaw, 0, 0}) * R0;
-  g = R0 * g;
+  gravity_ = R0 * gravity_;
   // Matrix3d rot_diff = R0 * Rs[0].transpose();
   Matrix3d rot_diff = R0;
   for (int i = 0; i <= frame_count; i++) {

@@ -28,7 +28,7 @@ System::System(const vins::proto::VinsConfig& vins_config)
   estimator_.SetParameter(Sophus::SO3d(qic), Eigen::Vector3d(vins_config.camera_to_imu().x(),
                                                              vins_config.camera_to_imu().y(),
                                                              vins_config.camera_to_imu().z()));
-  std::cout << "==> [SYSTEM] system initilize done." << endl;
+  LOG(INFO) << "[VINS] system initilize done.";
 }
 
 System::~System() {
@@ -36,7 +36,8 @@ System::~System() {
   estimator_.ClearState();
 }
 
-bool System::PublishImageData(int64_t timestamp, cv::Mat& img, cv::Mat& depth) {
+bool System::PublishImageData(int64_t timestamp, cv::Mat& img,
+                              std::optional<backend::ImuState> imu_state) {
   double stamp_second = static_cast<double>(timestamp) * 1e-9;
   // detect unstable camera stream
   if (stamp_second - current_time_ > 1.0 || stamp_second < current_time_) {
@@ -44,10 +45,6 @@ bool System::PublishImageData(int64_t timestamp, cv::Mat& img, cv::Mat& depth) {
   }
 
   PublishImuData(timestamp, estimator_.acc_0, estimator_.gyr_0);
-  if (!depth.empty()) {
-    CHECK_EQ(img.cols, depth.cols);
-    CHECK_EQ(img.rows, depth.rows);
-  }
 
   feature_tracker_.ReadImage(img, stamp_second, true);
   feature_tracker_.UpdateIdMono();
@@ -55,18 +52,15 @@ bool System::PublishImageData(int64_t timestamp, cv::Mat& img, cv::Mat& depth) {
   std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>> image;
   const auto& un_pts = feature_tracker_.vCurUndistortPts;
   const auto& feature_ids = feature_tracker_.vFeatureIds;
-  const auto& pixels = feature_tracker_.vCurPts;
+  // const auto& pixels = feature_tracker_.vCurPts;
   for (size_t j = 0; j < feature_ids.size(); j++) {
     if (feature_tracker_.vTrackCnt[j] < 2) continue;
-    // use -1 for depth to indicate that we have no good initial
-    double depth_val = -1.0;
-    if (!depth.empty()) {
-      depth_val = depth.at<float>(pixels[j].y, pixels[j].x);
-    }
-    image[feature_ids[j]].emplace_back(0, Eigen::Vector3d(un_pts[j].x, un_pts[j].y, depth_val));
+    Eigen::Vector3d pt_un(un_pts[j].x, un_pts[j].y, -1.0);
+    get_depth_fcn_(&pt_un);
+    image[feature_ids[j]].emplace_back(0, std::move(pt_un));
   }
 
-  estimator_.ProcessImage(image, timestamp);
+  estimator_.ProcessImage(image, timestamp, imu_state);
 
   if (vins_config_.viz()) {
     cv::Mat show_img = img;
@@ -92,11 +86,24 @@ void System::ShowTrack(cv::Mat* image) {
   if (image->channels() == 1) {
     cv::cvtColor(*image, *image, cv::COLOR_GRAY2BGR);
   }
+
+  // count feature depth
+  int feature_cnt = 0;
+  int dep_gt_cnt = 0;
+  for (const auto& it_per_id : estimator_.f_manager.feature) {
+    if (!it_per_id.Valid()) continue;
+    feature_cnt++;
+    if (it_per_id.inv_depth_gt_.has_value()) dep_gt_cnt++;
+  }
+
   const auto& pixels = feature_tracker_.vCurPts;
   for (unsigned int j = 0; j < pixels.size(); j++) {
     double len = min(1.0, 1.0 * feature_tracker_.vTrackCnt[j] / feature::WINDOW_SIZE);
     cv::circle(*image, pixels[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len), 2);
   }
+
+  cv::putText(*image, std::to_string(dep_gt_cnt) + "/" + std::to_string(feature_cnt),
+              cv::Point(10, 30), cv::FONT_HERSHEY_COMPLEX, 1, cv::Scalar(0, 255, 0), 2, 8, 0);
 }
 
 bool System::PublishImuData(int64_t timestamp, const Eigen::Vector3d& acc,

@@ -1,10 +1,6 @@
 #pragma once
 
 #include <map>
-#include <mutex>
-#include <queue>
-
-#include "sophus/se3.hpp"
 #include "vins/estimator.h"
 #include "vins/proto/vins_config.pb.h"
 
@@ -20,9 +16,15 @@ class System {
   ~System();
 
   // push in real image and IMU data (depth should be float scalar)
-  bool PublishImageData(int64_t timestamp, cv::Mat& img, cv::Mat& depth);
+  bool PublishImageData(int64_t timestamp, cv::Mat& img,
+                        std::optional<backend::ImuState> imu_state = std::nullopt);
+
   bool PublishImuData(int64_t timestamp, const Eigen::Vector3d& acc, const Eigen::Vector3d& gyr);
+
   void ShowTrack(cv::Mat* image);
+
+  // function to get feature depth
+  std::function<void(Eigen::Vector3d*)> get_depth_fcn_ = [](Eigen::Vector3d* /*point_un*/) {};
 
   // functions for visualization
   void Draw();

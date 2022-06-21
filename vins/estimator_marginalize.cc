@@ -88,7 +88,8 @@ void Estimator::MargOldFrame() {
         // if has depth ground truth add factor for it
         std::vector<std::shared_ptr<backend::Vertex>> edge_vertex{verterxPoint};
         std::shared_ptr<backend::EdgeInvDepthPrior> edge =
-            std::make_shared<backend::EdgeInvDepthPrior>(it_per_id.inv_depth_gt_.value(), edge_vertex);
+            std::make_shared<backend::EdgeInvDepthPrior>(it_per_id.inv_depth_gt_.value(),
+                                                         edge_vertex);
         edge->SetInformation(depth_information_);
         problem.AddEdge(edge);
       }

@@ -10,6 +10,16 @@ using namespace std;
 namespace vins {
 namespace backend {
 
+//  additional information from lidar odometry
+struct ImuState {
+  // camera information
+  Sophus::SE3d pose;
+  Eigen::Vector3d velocity;
+  Eigen::Vector3d bias_acc;
+  Eigen::Vector3d bias_gyr;
+  Eigen::Vector3d gravity;
+};
+
 class ImageFrame {
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
@@ -26,6 +36,7 @@ class ImageFrame {
   Eigen::Vector3d T;
   IntegrationBase* pre_integration;
   bool is_key_frame;
+  std::optional<ImuState> imu_state_ = std::nullopt;
 };
 
 bool VisualIMUAlignment(const Eigen::Vector3d& trans_ic,

@@ -21,7 +21,7 @@ const double INIT_DEPTH = 2.0;
 
 struct FeaturePerFrame {
   explicit FeaturePerFrame(const Eigen::Matrix<double, 3, 1>& _point) : point(_point) {
-    if (point(2) < 0.1) point(2) = 1.0;
+    point(2) = 1.0;
   }
   Eigen::Vector3d point;
 };
@@ -40,6 +40,10 @@ class FeaturePerId {
   // 0 haven't solve yet; 1 solve succ; 2 solve fail; 3 good initial
   // we good initial we will skip optimization & triangulation
   int solve_flag;
+
+  bool Valid() const {
+    return feature_per_frame.size() >= 2 && start_frame < feature::WINDOW_SIZE - 2;
+  }
 
   FeaturePerId(int _feature_id, int _start_frame)
       : feature_id(_feature_id),
@@ -71,7 +75,8 @@ class FeatureManager {
   void removeFailures();
   void ClearDepth();
   Eigen::VectorXd GetInverseDepthVector();
-  void triangulate(Eigen::Vector3d Ps[], Eigen::Vector3d tic, Eigen::Matrix3d ric);
+  void triangulate(Eigen::Vector3d Ps[], Eigen::Vector3d tic, Eigen::Matrix3d ric,
+                   bool filter_outlier = false);
   void RemoveBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3d marg_P, Eigen::Matrix3d new_R,
                             Eigen::Vector3d new_P);
   void RemoveBack();

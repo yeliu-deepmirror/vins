@@ -22,7 +22,7 @@ class IntegrationBase {
   IntegrationBase() = delete;
   IntegrationBase(const Eigen::Vector3d& _acc_0, const Eigen::Vector3d& _gyr_0,
                   const Eigen::Vector3d& _linearized_ba, const Eigen::Vector3d& _linearized_bg,
-                  const ImuIntrinsic& intrinsic = ImuIntrinsic());
+                  const Eigen::Vector3d& gravity, const ImuIntrinsic& intrinsic = ImuIntrinsic());
 
   void push_back(double dt, const Eigen::Vector3d& acc, const Eigen::Vector3d& gyr);
 

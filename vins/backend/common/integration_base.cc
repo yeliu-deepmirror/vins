@@ -6,10 +6,10 @@ namespace backend {
 IntegrationBase::IntegrationBase(const Eigen::Vector3d& _acc_0, const Eigen::Vector3d& _gyr_0,
                                  const Eigen::Vector3d& _linearized_ba,
                                  const Eigen::Vector3d& _linearized_bg,
-                                 const ImuIntrinsic& intrinsic)
+                                 const Eigen::Vector3d& gravity, const ImuIntrinsic& intrinsic)
     : acc_0{_acc_0},
       gyr_0{_gyr_0},
-      gravity_(Eigen::Vector3d(0, 0, GRAVITY_NORM)),
+      gravity_(gravity),
       linearized_acc{_acc_0},
       linearized_gyr{_gyr_0},
       linearized_ba{_linearized_ba},

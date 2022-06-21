@@ -36,7 +36,7 @@ class Estimator {
 
   // original VINS interface for image (which support stereo camera)
   void ProcessImage(const std::map<int, std::vector<std::pair<int, Eigen::Vector3d>>>& image,
-                    int64_t header);
+                    int64_t header, const std::optional<backend::ImuState>& imu_state);
 
   // internal
   void ClearState(bool bInit = false);
@@ -68,11 +68,10 @@ class Estimator {
   VecX errprior_;
   MatXX Jprior_inv_;
 
-
   //////////////// OUR SOLVER //////////////////
   SolverFlag solver_flag;
   MarginalizationFlag marginalization_flag;
-  Vector3d g;
+  Vector3d gravity_;
   MatrixXd Ap[2], backup_A;
   VectorXd bp[2], backup_b;
 

@@ -32,7 +32,7 @@ bool FeatureManager::AddFeatureCheckParallax(
     if (it == feature.end()) {
       feature.push_back(FeaturePerId(feature_id, frame_count));
       it = std::prev(feature.end());
-      if (pt_cam(2) > 0.1) {
+      if (pt_cam(2) > 0.0) {
         // we have good depth initialization (maybe from other sensor)
         it->estimated_depth = pt_cam(2);
         it->inv_depth_gt_ = 1.0 / pt_cam(2);
@@ -115,7 +115,8 @@ Eigen::VectorXd FeatureManager::GetInverseDepthVector() {
   return dep_vec;
 }
 
-void FeatureManager::triangulate(Eigen::Vector3d Ps[], Eigen::Vector3d tic, Eigen::Matrix3d ric) {
+void FeatureManager::triangulate(Eigen::Vector3d Ps[], Eigen::Vector3d tic, Eigen::Matrix3d ric,
+                                 bool filter_outlier) {
   for (auto& it_per_id : feature) {
     it_per_id.used_num = it_per_id.feature_per_frame.size();
     if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2)) continue;
@@ -155,6 +156,9 @@ void FeatureManager::triangulate(Eigen::Vector3d Ps[], Eigen::Vector3d tic, Eige
     it_per_id.estimated_depth = svd_V[2] / svd_V[3];
     if (it_per_id.estimated_depth < 0.1) {
       it_per_id.estimated_depth = INIT_DEPTH;
+      if (filter_outlier) {
+        it_per_id.solve_flag = 2;
+      }
     }
   }
 }

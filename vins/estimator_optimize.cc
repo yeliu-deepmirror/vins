@@ -88,7 +88,8 @@ void Estimator::ProblemSolve() {
         // if has depth ground truth add factor for it
         std::vector<std::shared_ptr<backend::Vertex>> edge_vertex{verterxPoint};
         std::shared_ptr<backend::EdgeInvDepthPrior> edge =
-            std::make_shared<backend::EdgeInvDepthPrior>(it_per_id.inv_depth_gt_.value(), edge_vertex);
+            std::make_shared<backend::EdgeInvDepthPrior>(it_per_id.inv_depth_gt_.value(),
+                                                         edge_vertex);
         edge->SetInformation(depth_information_);
         problem.AddEdge(edge);
       }
@@ -160,6 +161,7 @@ void Estimator::ProblemSolve() {
   if (abs(abs(origin_R0.y()) - 90) < 1.0 || abs(abs(origin_R00.y()) - 90) < 1.0) {
     rot_diff = Rs[0] * mRotCam0.transpose();
   }
+  // rot_diff = Eigen::Matrix3d::Identity();
   for (int i = 0; i <= feature::WINDOW_SIZE; i++) {
     VecX vPoseCam_i = vertexCams_vec[i]->Parameters();
     Rs[i] = rot_diff * Quaterniond(vPoseCam_i[6], vPoseCam_i[3], vPoseCam_i[4], vPoseCam_i[5])

@@ -6,7 +6,10 @@
 
 using namespace std;
 using namespace cv;
+
+#if defined(__PANGOLIN__)
 using namespace pangolin;
+#endif  // defined(__PANGOLIN__)
 
 namespace vins {
 
@@ -32,7 +35,6 @@ System::System(const vins::proto::VinsConfig& vins_config)
 }
 
 System::~System() {
-  pangolin::QuitAll();
   estimator_.ClearState();
 }
 
@@ -121,6 +123,7 @@ bool System::PublishImuData(int64_t timestamp, const Eigen::Vector3d& acc,
   return true;
 }
 
+#if defined(__PANGOLIN__)
 void System::Draw() {
   // create pangolin window and plot the trajectory
   pangolin::CreateWindowAndBind("Vins Viewer", 1224, 768);
@@ -183,5 +186,8 @@ void System::Draw() {
     usleep(50000);  // sleep 5 ms
   }
 }
+#else
+void System::Draw() {}
+#endif  // defined(__PANGOLIN__)
 
 }  // namespace vins

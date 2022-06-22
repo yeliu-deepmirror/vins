@@ -4,7 +4,9 @@
 #include "vins/estimator.h"
 #include "vins/proto/vins_config.pb.h"
 
+#if defined(__PANGOLIN__)
 #include <pangolin/pangolin.h>
+#endif  // defined(__PANGOLIN__)
 
 namespace vins {
 

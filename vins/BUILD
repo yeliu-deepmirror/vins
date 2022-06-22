@@ -25,7 +25,7 @@ cc_library(
 )
 
 cc_library(
-    name = "system",
+    name = "system_viz",
     srcs = [
         "system.cc",
     ],
@@ -36,6 +36,22 @@ cc_library(
         ":estimator",
         "//vins/proto:vins_config_cc_proto",
         "@pangolin",
+        "@sophus",
+    ],
+    defines = ["__PANGOLIN__"],
+)
+
+cc_library(
+    name = "system",
+    srcs = [
+        "system.cc",
+    ],
+    hdrs = [
+        "system.h",
+    ],
+    deps = [
+        ":estimator",
+        "//vins/proto:vins_config_cc_proto",
         "@sophus",
     ],
 )

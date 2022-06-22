@@ -38,9 +38,7 @@ cc_library(
         "@pangolin",
         "@sophus",
     ],
-    defines = [
-        "//xavier:xavier": ["__XAVIER__"],
-    ],
+    defines = ["__PANGOLIN__"],
 )
 
 cc_library(

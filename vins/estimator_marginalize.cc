@@ -150,73 +150,25 @@ void Estimator::MargOldFrame() {
   Jprior_inv_ = problem.GetJtPrior();
 }
 
+void Estimator::ExtendedPrior(int dim) {
+  int size = Hprior_.rows() + dim;
+  Hprior_.conservativeResize(size, size);
+  bprior_.conservativeResize(size);
+  bprior_.tail(dim).setZero();
+  Hprior_.rightCols(dim).setZero();
+  Hprior_.bottomRows(dim).setZero();
+}
+
 void Estimator::MargNewFrame() {
-  // step1. build problem
-  backend::Problem problem(backend::Problem::ProblemType::SLAM_PROBLEM);
-  vector<shared_ptr<backend::VertexPose>> vertexCams_vec;
-  vector<shared_ptr<backend::VertexSpeedBias>> vertexVB_vec;
-
-  int pose_dim = 0;
-
-  // add the externion parameters to the graph, body camera transformation, camera calibrations,
-  // etc. as it is frequency used, put it in the first place.
-  shared_ptr<backend::VertexPose> vertexExt(new backend::VertexPose());
-  {
-    Eigen::VectorXd pose = vPic[0];
-    vertexExt->SetParameters(pose);
-    problem.AddVertex(vertexExt);
-    pose_dim += vertexExt->LocalDimension();
-  }
-
-  for (int i = 0; i < feature::WINDOW_SIZE + 1; i++) {
-    shared_ptr<backend::VertexPose> vertexCam(new backend::VertexPose());
-    Eigen::VectorXd pose(7);
-    Quaterniond q_init(Rs[i]);
-    pose << Ps[i][0], Ps[i][1], Ps[i][2], q_init.x(), q_init.y(), q_init.z(), q_init.w();
-    vertexCam->SetParameters(pose);
-    vertexCams_vec.push_back(vertexCam);
-    problem.AddVertex(vertexCam);
-    pose_dim += vertexCam->LocalDimension();
-
-    shared_ptr<backend::VertexSpeedBias> vertexVB(new backend::VertexSpeedBias());
-    Eigen::VectorXd vb(9);
-    vb << Vs[i][0], Vs[i][1], Vs[i][2], Bas[i][0], Bas[i][1], Bas[i][2], Bgs[i][0], Bgs[i][1],
-        Bgs[i][2];
-    vertexVB->SetParameters(vb);
-    vertexVB_vec.push_back(vertexVB);
-    problem.AddVertex(vertexVB);
-    pose_dim += vertexVB->LocalDimension();
-  }
-
-  // prior
-  {
-    // already got Prior
-    if (Hprior_.rows() > 0) {
-      problem.SetHessianPrior(Hprior_);  // tell the problem
-      problem.SetbPrior(bprior_);
-      problem.SetErrPrior(errprior_);
-      problem.SetJtPrior(Jprior_inv_);
-
-      problem.ExtendHessiansPriorSize(15);  // extand its dimension
-    } else {
-      Hprior_ = MatXX(pose_dim, pose_dim);
-      Hprior_.setZero();
-      bprior_ = VecX(pose_dim);
-      bprior_.setZero();
-    }
-  }
-
-  std::vector<std::shared_ptr<backend::Vertex>> marg_vertex;
-  // marginalized the second last frame
-  marg_vertex.push_back(vertexCams_vec[feature::WINDOW_SIZE - 1]);
-  marg_vertex.push_back(vertexVB_vec[feature::WINDOW_SIZE - 1]);
-
-  problem.Marginalize(marg_vertex, pose_dim);
-
-  Hprior_ = problem.GetHessianPrior();
-  bprior_ = problem.GetbPrior();
-  errprior_ = problem.GetErrPrior();
-  Jprior_inv_ = problem.GetJtPrior();
+  CHECK(Hprior_.rows() > 0);
+  ExtendedPrior(15);
+  backend::MarginalizeFrameInternal(6 + (feature::WINDOW_SIZE - 1) * 15, 15, &Hprior_, &bprior_,
+                                    &errprior_, &Jprior_inv_);
+  // if (!ESTIMATE_EXTRINSIC) {
+  //   Hprior_.block(0, 0, 6, Hprior_.cols()).setZero();
+  //   Hprior_.block(0, 0, Hprior_.rows(), 6).setZero();
+  //   bprior_.segment(0, 6).setZero();
+  // }
 }
 
 }  // namespace vins

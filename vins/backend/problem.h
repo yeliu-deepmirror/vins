@@ -41,11 +41,6 @@ class Problem {
 
   bool Solve(int iterations = 10, bool verbose = true);
 
-  // marginalize a frame and the landmark "owned" by it (the landmarks whose host is this frame)
-  bool Marginalize(std::shared_ptr<Vertex> frameVertex,
-                   const std::vector<std::shared_ptr<Vertex>>& landmarkVerticies);
-
-  bool Marginalize(const std::shared_ptr<Vertex> frameVertex);
   bool Marginalize(const std::vector<std::shared_ptr<Vertex>> frameVertex, int pose_dim);
 
   MatXX GetHessianPrior() { return H_prior_; }

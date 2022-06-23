@@ -63,6 +63,7 @@ class Estimator {
   bool verbose_;
 
   //////////////// OUR SOLVER ///////////////////
+  void ExtendedPrior(int dim);
   MatXX Hprior_;
   VecX bprior_;
   VecX errprior_;

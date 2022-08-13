@@ -23,7 +23,7 @@ class System {
 
   bool PublishImuData(int64_t timestamp, const Eigen::Vector3d& acc, const Eigen::Vector3d& gyr);
 
-  void ShowTrack(cv::Mat* image);
+  void ShowTrack(cv::Mat* image, bool cnt = true);
 
   // function to get feature depth
   std::function<void(Eigen::Vector3d*)> get_depth_fcn_ = [](Eigen::Vector3d* /*point_un*/) {};

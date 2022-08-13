@@ -46,14 +46,14 @@ bool System::PublishImageData(int64_t timestamp, cv::Mat& img, bool publish,
     return false;
   }
 
-  PublishImuData(timestamp, estimator_.acc_0, estimator_.gyr_0);
-
   feature_tracker_.ReadImage(img, stamp_second, true);
   feature_tracker_.UpdateIdMono();
 
   if (!publish) {
     return true;
   }
+
+  PublishImuData(timestamp, estimator_.acc_0, estimator_.gyr_0);
 
   std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>> image;
   const auto& un_pts = feature_tracker_.vCurUndistortPts;
@@ -87,11 +87,19 @@ bool System::PublishImageData(int64_t timestamp, cv::Mat& img, bool publish,
   return true;
 }
 
-void System::ShowTrack(cv::Mat* image) {
+void System::ShowTrack(cv::Mat* image, bool cnt) {
   CHECK(image != nullptr);
   if (image->channels() == 1) {
     cv::cvtColor(*image, *image, cv::COLOR_GRAY2BGR);
   }
+
+  const auto& pixels = feature_tracker_.vCurPts;
+  for (unsigned int j = 0; j < pixels.size(); j++) {
+    double len = min(1.0, 1.0 * feature_tracker_.vTrackCnt[j] / feature::WINDOW_SIZE);
+    cv::circle(*image, pixels[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len), 2);
+  }
+
+  if (!cnt) return;
 
   // count feature depth
   int feature_cnt = 0;
@@ -102,12 +110,6 @@ void System::ShowTrack(cv::Mat* image) {
     if (it_per_id.inv_depth_gt_.has_value()) dep_gt_cnt++;
   }
 
-  const auto& pixels = feature_tracker_.vCurPts;
-  for (unsigned int j = 0; j < pixels.size(); j++) {
-    double len = min(1.0, 1.0 * feature_tracker_.vTrackCnt[j] / feature::WINDOW_SIZE);
-    cv::circle(*image, pixels[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len), 2);
-  }
-
   cv::putText(*image, std::to_string(dep_gt_cnt) + "/" + std::to_string(feature_cnt),
               cv::Point(10, 30), cv::FONT_HERSHEY_COMPLEX, 1, cv::Scalar(0, 255, 0), 2, 8, 0);
 }
@@ -115,7 +117,7 @@ void System::ShowTrack(cv::Mat* image) {
 bool System::PublishImuData(int64_t timestamp, const Eigen::Vector3d& acc,
                             const Eigen::Vector3d& gyr) {
   double stamp_second = static_cast<double>(timestamp) * 1e-9;
-  if (stamp_second <= current_time_) {
+  if (stamp_second < current_time_) {
     LOG(ERROR) << "imu message in disorder!" << stamp_second << " " << current_time_;
     return false;
   }

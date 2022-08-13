@@ -38,7 +38,7 @@ System::~System() {
   estimator_.ClearState();
 }
 
-bool System::PublishImageData(int64_t timestamp, cv::Mat& img,
+bool System::PublishImageData(int64_t timestamp, cv::Mat& img, bool publish,
                               std::optional<backend::ImuState> imu_state) {
   double stamp_second = static_cast<double>(timestamp) * 1e-9;
   // detect unstable camera stream
@@ -50,6 +50,10 @@ bool System::PublishImageData(int64_t timestamp, cv::Mat& img,
 
   feature_tracker_.ReadImage(img, stamp_second, true);
   feature_tracker_.UpdateIdMono();
+
+  if (!publish) {
+    return true;
+  }
 
   std::map<int, std::vector<std::pair<int, Eigen::Matrix<double, 3, 1>>>> image;
   const auto& un_pts = feature_tracker_.vCurUndistortPts;

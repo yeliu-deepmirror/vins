@@ -18,7 +18,7 @@ class System {
   ~System();
 
   // push in real image and IMU data (depth should be float scalar)
-  bool PublishImageData(int64_t timestamp, cv::Mat& img,
+  bool PublishImageData(int64_t timestamp, cv::Mat& img, bool publish = true,
                         std::optional<backend::ImuState> imu_state = std::nullopt);
 
   bool PublishImuData(int64_t timestamp, const Eigen::Vector3d& acc, const Eigen::Vector3d& gyr);

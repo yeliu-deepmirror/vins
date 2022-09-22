@@ -79,6 +79,7 @@ bool System::PublishImageData(int64_t timestamp, cv::Mat& img,
     Eigen::Vector3d trans =
         estimator_.Rs[i] * estimator_.rigid_ic_.translation() + estimator_.Ps[i];
     camera_poses_[estimator_.Headers[i]] = Sophus::SE3d(rot, trans);
+    imu_poses_[estimator_.Headers[i]] = Sophus::SE3d(estimator_.Rs[i], estimator_.Ps[i]);
   }
   return true;
 }

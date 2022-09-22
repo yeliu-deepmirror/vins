@@ -41,6 +41,7 @@ class System {
 
   // buffer the trajectory
   std::map<int64_t, Sophus::SE3d> camera_poses_;
+  std::map<int64_t, Sophus::SE3d> imu_poses_;
 };
 
 }  // namespace vins

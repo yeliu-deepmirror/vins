@@ -19,23 +19,27 @@ bool Estimator::InitialStructure() {
     // has imu state, use them to iniailize
     LOG(INFO) << "use precompute imu state to initialize wins.";
 
+    // add additional rotation to make the gravity pointing down
+    Eigen::Quaterniond rotate_to_vertical =
+        Eigen::Quaterniond::FromTwoVectors(gravity_ex, Eigen::Vector3d(0.0, 0.0, 1.0));
+
+    gravity_ = rotate_to_vertical * gravity_ex;
+    LOG(INFO) << gravity_ex.transpose() << " -> " << gravity_.transpose();
+
     // clear key frame in the container
     int i = 0;
     for (auto& iter : all_image_frame) {
       CHECK_EQ(iter.first, Headers[i]);
-      Ps[i] = iter.second.imu_state_->pose.translation();
-      Rs[i] = iter.second.imu_state_->pose.so3().matrix();
-      Vs[i] = iter.second.imu_state_->velocity;
+      Ps[i] = rotate_to_vertical * iter.second.imu_state_->pose.translation();
+      Rs[i] = rotate_to_vertical.matrix() * iter.second.imu_state_->pose.so3().matrix();
+      Vs[i] = rotate_to_vertical * iter.second.imu_state_->velocity;
       Bas[i] = iter.second.imu_state_->bias_acc;
       Bgs[i] = iter.second.imu_state_->bias_gyr;
-      pre_integrations[i]->gravity_ = gravity_ex;
+      pre_integrations[i]->gravity_ = gravity_;
       pre_integrations[i]->repropagate(Bas[i], Bgs[i]);
       iter.second.is_key_frame = true;
       i++;
     }
-
-    // update gravity
-    gravity_ = gravity_ex;
 
     // reset all features
     f_manager.ClearDepth();

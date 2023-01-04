@@ -6,7 +6,8 @@ namespace vins {
 void Estimator::ProblemSolve() {
   vInverseDepth = f_manager.GetInverseDepthVector();
 
-  std::shared_ptr<backend::LossFunction> lossfunction = std::make_shared<backend::CauchyLoss>(1.0);
+  std::shared_ptr<backend::LossFunction> lossfunction =
+      std::make_shared<backend::CauchyLoss>(robust_loss_factor_);
 
   // step1. build the problem
   backend::Problem problem(backend::Problem::ProblemType::SLAM_PROBLEM);
@@ -20,7 +21,7 @@ void Estimator::ProblemSolve() {
   {
     Eigen::VectorXd pose = vPic[0];
     vertexExt->SetParameters(pose);
-    if (!ESTIMATE_EXTRINSIC) {
+    if (!estimate_extrinsics_) {
       vertexExt->SetFixed();
     }
     problem.AddVertex(vertexExt);
@@ -45,6 +46,9 @@ void Estimator::ProblemSolve() {
     vertexVB_vec.push_back(vertexVB);
     problem.AddVertex(vertexVB);
     pose_dim += vertexVB->LocalDimension();
+  }
+  if (!reset_origin_each_iter_) {
+    vertexCams_vec[0]->SetFixed();
   }
 
   // IMU
@@ -128,7 +132,7 @@ void Estimator::ProblemSolve() {
     }
   }
 
-  problem.Solve(NUM_ITERATIONS, verbose_);
+  problem.Solve(gn_iterations_, verbose_);
 
   // update bprior_,  Hprior_ do not need update
   if (Hprior_.rows() > 0) {
@@ -161,7 +165,11 @@ void Estimator::ProblemSolve() {
   if (abs(abs(origin_R0.y()) - 90) < 1.0 || abs(abs(origin_R00.y()) - 90) < 1.0) {
     rot_diff = Rs[0] * mRotCam0.transpose();
   }
-  // rot_diff = Eigen::Matrix3d::Identity();
+  if (!reset_origin_each_iter_) {
+    rot_diff = Eigen::Matrix3d::Identity();
+    origin_P0 = Eigen::Vector3d(vPoseCam0[0], vPoseCam0[1], vPoseCam0[2]);
+  }
+
   for (int i = 0; i <= feature::WINDOW_SIZE; i++) {
     VecX vPoseCam_i = vertexCams_vec[i]->Parameters();
     Rs[i] = rot_diff * Quaterniond(vPoseCam_i[6], vPoseCam_i[3], vPoseCam_i[4], vPoseCam_i[5])
@@ -178,7 +186,7 @@ void Estimator::ProblemSolve() {
     Bgs[i] = Vector3d(vSpeedBias_i[6], vSpeedBias_i[7], vSpeedBias_i[8]);
   }
 
-  if (ESTIMATE_EXTRINSIC) {
+  if (estimate_extrinsics_) {
     VecX vExterCali = vertexExt->Parameters();
     rigid_ic_ =
         Sophus::SE3d(Eigen::Quaterniond(vExterCali[6], vExterCali[3], vExterCali[4], vExterCali[5]),

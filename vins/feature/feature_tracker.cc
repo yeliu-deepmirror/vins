@@ -118,8 +118,8 @@ void FeatureTracker::ReadImage(const cv::Mat& _img, double _cur_time, bool bPubl
   if (vCurPts.size() > 0) {
     std::vector<uchar> status;
     std::vector<float> err;
-    cv::calcOpticalFlowPyrLK(mCurImg, mForwImg, vCurPts, vForwPts, status, err, cv::Size(21, 21),
-                             3);
+    cv::calcOpticalFlowPyrLK(mCurImg, mForwImg, vCurPts, vForwPts, status, err,
+                             cv::Size(window_size_, window_size_), 3);
 
     for (int i = 0; i < int(vForwPts.size()); i++)
       if (status[i] && !InBorder(vForwPts[i])) status[i] = 0;

@@ -72,6 +72,7 @@ class FeatureTracker {
   bool equalize_ = true;
   int max_num_pts_ = 500;
   int min_pt_distance_ = 10;
+  int window_size_ = 21;
 };
 
 }  // namespace feature

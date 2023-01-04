@@ -31,6 +31,18 @@ System::System(const vins::proto::VinsConfig& vins_config)
   estimator_.SetParameter(Sophus::SO3d(qic), Eigen::Vector3d(vins_config.camera_to_imu().x(),
                                                              vins_config.camera_to_imu().y(),
                                                              vins_config.camera_to_imu().z()));
+  if (vins_config_.acc_noise() > 0) {
+    estimator_.imu_intrinsics_.acc_noise = vins_config_.acc_noise();
+  }
+  if (vins_config_.acc_random_walk() > 0) {
+    estimator_.imu_intrinsics_.acc_random_walk = vins_config_.acc_random_walk();
+  }
+  if (vins_config_.gyr_noise() > 0) {
+    estimator_.imu_intrinsics_.gyr_noise = vins_config_.gyr_noise();
+  }
+  if (vins_config_.gyr_random_walk() > 0) {
+    estimator_.imu_intrinsics_.gyr_random_walk = vins_config_.gyr_random_walk();
+  }
   LOG(INFO) << "[VINS] system initilize done.";
 }
 
@@ -75,10 +87,7 @@ bool System::PublishImageData(int64_t timestamp, cv::Mat& img,
 
   // update frame poses
   for (int i = 0; i < feature::WINDOW_SIZE + 1; i++) {
-    Eigen::Matrix3d rot = estimator_.Rs[i] * estimator_.rigid_ic_.so3().matrix();
-    Eigen::Vector3d trans =
-        estimator_.Rs[i] * estimator_.rigid_ic_.translation() + estimator_.Ps[i];
-    camera_poses_[estimator_.Headers[i]] = Sophus::SE3d(rot, trans);
+    imu_poses_[estimator_.Headers[i]] = Sophus::SE3d(estimator_.Rs[i], estimator_.Ps[i]);
   }
   return true;
 }
@@ -123,6 +132,15 @@ bool System::PublishImuData(int64_t timestamp, const Eigen::Vector3d& acc,
   return true;
 }
 
+bool System::Tracking() { return estimator_.solver_flag == Estimator::SolverFlag::NON_LINEAR; }
+
+std::optional<backend::ImuState> System::GetCurrentImuState() {
+  if (!Tracking()) return std::nullopt;
+  int idx = feature::WINDOW_SIZE;
+  return backend::ImuState{Sophus::SE3d(estimator_.Rs[idx], estimator_.Ps[idx]), estimator_.Vs[idx],
+                           estimator_.Bas[idx], estimator_.Bgs[idx], estimator_.gravity_};
+}
+
 #if defined(__PANGOLIN__)
 void System::Draw() {
   // create pangolin window and plot the trajectory
@@ -156,7 +174,7 @@ void System::Draw() {
     glColor3f(0, 0, 0);
     glLineWidth(2);
     glBegin(GL_LINE_STRIP);
-    for (auto& pose_iter : camera_poses_) {
+    for (auto& pose_iter : imu_poses_) {
       auto& trans = pose_iter.second.translation();
       glVertex3f(trans(0), trans(1), trans(2));
     }

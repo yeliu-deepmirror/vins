@@ -25,6 +25,9 @@ class System {
 
   void ShowTrack(cv::Mat* image);
 
+  bool Tracking();
+  std::optional<backend::ImuState> GetCurrentImuState();
+
   // function to get feature depth
   std::function<void(Eigen::Vector3d*)> get_depth_fcn_ = [](Eigen::Vector3d* /*point_un*/) {};
 
@@ -40,7 +43,7 @@ class System {
   double current_time_ = -1;
 
   // buffer the trajectory
-  std::map<int64_t, Sophus::SE3d> camera_poses_;
+  std::map<int64_t, Sophus::SE3d> imu_poses_;
 };
 
 }  // namespace vins

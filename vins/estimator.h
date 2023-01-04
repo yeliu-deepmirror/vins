@@ -17,8 +17,6 @@
 #include "vins/backend/edge/edge_prior.h"
 #include "vins/backend/edge/edge_reprojection.h"
 
-#include "vins/parameters.h"
-
 #include <opencv2/core/eigen.hpp>
 #include <queue>
 
@@ -61,6 +59,11 @@ class Estimator {
   enum MarginalizationFlag { MARGIN_OLD = 0, MARGIN_SECOND_NEW = 1 };
 
   bool verbose_;
+  bool save_pts_ = true;
+  double robust_loss_factor_ = 1.0;
+  int gn_iterations_ = 8;
+  bool estimate_extrinsics_ = false;
+  bool reset_origin_each_iter_ = true;
 
   //////////////// OUR SOLVER ///////////////////
   void ExtendedPrior(int dim);
@@ -73,6 +76,7 @@ class Estimator {
   SolverFlag solver_flag;
   MarginalizationFlag marginalization_flag;
   Vector3d gravity_;
+  backend::ImuIntrinsic imu_intrinsics_;
   MatrixXd Ap[2], backup_A;
   VectorXd bp[2], backup_b;
 

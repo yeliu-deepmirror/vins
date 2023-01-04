@@ -78,7 +78,7 @@ void Estimator::MargOldFrame() {
       verterxPoint->SetParameters(inv_d);
       problem.AddVertex(verterxPoint);
 
-      {
+      if (save_pts_) {
         // add point to map
         Eigen::Vector3d pt_camera_1 = pts_i / vInverseDepth[feature_index];
         all_map_points_[it_per_id.feature_id] = Rs[imu_i] * (rigid_ic_ * pt_camera_1) + Ps[imu_i];
@@ -164,7 +164,7 @@ void Estimator::MargNewFrame() {
   ExtendedPrior(15);
   backend::MarginalizeFrameInternal(6 + (feature::WINDOW_SIZE - 1) * 15, 15, &Hprior_, &bprior_,
                                     &errprior_, &Jprior_inv_);
-  // if (!ESTIMATE_EXTRINSIC) {
+  // if (!estimate_extrinsics_) {
   //   Hprior_.block(0, 0, 6, Hprior_.cols()).setZero();
   //   Hprior_.block(0, 0, Hprior_.rows(), 6).setZero();
   //   bprior_.segment(0, 6).setZero();

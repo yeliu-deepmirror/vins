@@ -74,8 +74,8 @@ void Estimator::processIMU(double dt, const Vector3d& linear_acceleration,
   }
 
   if (!pre_integrations[frame_count]) {
-    pre_integrations[frame_count] =
-        new backend::IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count], gravity_};
+    pre_integrations[frame_count] = new backend::IntegrationBase{
+        acc_0, gyr_0, Bas[frame_count], Bgs[frame_count], gravity_, imu_intrinsics_};
   }
 
   if (frame_count != 0) {
@@ -124,8 +124,8 @@ void Estimator::ProcessImage(
   imageframe.imu_state_ = imu_state;
   all_image_frame.emplace(header, std::move(imageframe));
 
-  tmp_pre_integration =
-      new backend::IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count], gravity_};
+  tmp_pre_integration = new backend::IntegrationBase{
+      acc_0, gyr_0, Bas[frame_count], Bgs[frame_count], gravity_, imu_intrinsics_};
 
   if (solver_flag == INITIAL) {
     if (frame_count == feature::WINDOW_SIZE) {
@@ -178,27 +178,24 @@ void Estimator::SolveOdometry() {
 
 bool Estimator::failureDetection() {
   if (f_manager.last_track_num < 2) {
+    LOG(ERROR) << "not enough track : " << f_manager.last_track_num;
     return true;
   }
-  if (Bas[feature::WINDOW_SIZE].norm() > 2.5) {
+  if (Bas[feature::WINDOW_SIZE].squaredNorm() > 4) {
+    LOG(ERROR) << "too large ba " << Bas[feature::WINDOW_SIZE].squaredNorm();
     return true;
   }
-  if (Bgs[feature::WINDOW_SIZE].norm() > 1.0) {
+  if (Bgs[feature::WINDOW_SIZE].squaredNorm() > 1.0) {
+    LOG(ERROR) << "too large bg " << Bgs[feature::WINDOW_SIZE].squaredNorm();
     return true;
   }
   Vector3d tmp_P = Ps[feature::WINDOW_SIZE];
-  if ((tmp_P - last_P).norm() > 5) {
+  if ((tmp_P - last_P).squaredNorm() > 100) {
+    LOG(ERROR) << "too large movement " << (tmp_P - last_P).squaredNorm();
     return true;
   }
-  if (abs(tmp_P.z() - last_P.z()) > 1) {
-    return true;
-  }
-  Matrix3d tmp_R = Rs[feature::WINDOW_SIZE];
-  Matrix3d delta_R = tmp_R.transpose() * last_R;
-  Quaterniond delta_Q(delta_R);
-  double delta_angle;
-  delta_angle = acos(delta_Q.w()) * 2.0 / 3.14 * 180.0;
-  if (delta_angle > 50) {
+  if (abs(tmp_P.z() - last_P.z()) > 2.0) {
+    LOG(ERROR) << "too large height movement " << abs(tmp_P.z() - last_P.z());
     return true;
   }
   return false;
@@ -231,7 +228,8 @@ void Estimator::slideWindow() {
 
       delete pre_integrations[feature::WINDOW_SIZE];
       pre_integrations[feature::WINDOW_SIZE] = new backend::IntegrationBase{
-          acc_0, gyr_0, Bas[feature::WINDOW_SIZE], Bgs[feature::WINDOW_SIZE], gravity_};
+          acc_0,    gyr_0,          Bas[feature::WINDOW_SIZE], Bgs[feature::WINDOW_SIZE],
+          gravity_, imu_intrinsics_};
 
       dt_buf[feature::WINDOW_SIZE].clear();
       linear_acceleration_buf[feature::WINDOW_SIZE].clear();
@@ -278,7 +276,8 @@ void Estimator::slideWindow() {
 
       delete pre_integrations[feature::WINDOW_SIZE];
       pre_integrations[feature::WINDOW_SIZE] = new backend::IntegrationBase{
-          acc_0, gyr_0, Bas[feature::WINDOW_SIZE], Bgs[feature::WINDOW_SIZE], gravity_};
+          acc_0,    gyr_0,          Bas[feature::WINDOW_SIZE], Bgs[feature::WINDOW_SIZE],
+          gravity_, imu_intrinsics_};
 
       dt_buf[feature::WINDOW_SIZE].clear();
       linear_acceleration_buf[feature::WINDOW_SIZE].clear();

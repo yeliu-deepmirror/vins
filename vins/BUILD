@@ -10,7 +10,6 @@ cc_library(
     ],
     hdrs = [
         "estimator.h",
-        "parameters.h",
     ],
     deps = [
         "//vins/backend:problem",
